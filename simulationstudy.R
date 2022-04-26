@@ -1,0 +1,20 @@
+library(pracma)
+library(cubature)
+library(expm)
+library("copula")
+library(CVTuningCov)
+library(JM)
+library(joineR)
+library("abind")
+library("magic")
+library("matrixcalc")
+library(Deriv)
+library(mvtnorm)
+library(emdbook)
+library("rgl")
+library(latex2exp)
+library(tikzDevice)
+options(tikzMetricPackages = c("\\usepackage{amsmath}",
+                               "\\usepackage{xcolor}",
+                               "\\usepackage{tikz}",
+                               "\\usetikzlibrary{calc}"))
