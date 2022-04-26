@@ -74,12 +74,12 @@ Y.lmmsurcondicopulajoineRcorrNOPLOTni=function(beta1,beta2,n,sigma,var.random,la
                                                rho1,rho2,surlmmcor,lmmcor,ni)
 {
   timepoint=seq(0,10,length=ni)
-  if(surlmmcor=="car") R21=rho1^(c(10-timepoint+1))
-  if(surlmmcor=="ex") R21=rep(rho1,ni)
+  if(surlmmcor=="car") R21=rho1^(c(10-timepoint+1))       #Select the correlation structure R_ty between the two sub-models
+  if(surlmmcor=="ex") R21=rep(rho1,ni)                    #after conditioning on the random effects b_i
   R12=t(R21)
   R11=1
-  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,ni)),(ni-1)),1),ncol=ni)
-  if(lmmcor=="car") R22=car1(timepoint,rho2)
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,ni)),(ni-1)),1),ncol=ni)   #Select the correlation structure R_y within the longitudinal process
+  if(lmmcor=="car") R22=car1(timepoint,rho2)                                 #after conditioning on the random effects b_i
   R=rbind(cbind(R11,R12),cbind(R21,R22))
   Y=matrix(0,nrow=ni*n,ncol=13)
   Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
@@ -353,6 +353,177 @@ apploglikObLongmatrixni=function(theta,data,lmmcor,m)
 }
 
 
+#Estimated parameters from the proposed joint model with R_ty not equal to 0 and R_y not equal to identity matrix I
+Y.lmmsurcondicopulajoineRGHObcorest=function(beta1,beta2,sigma,var.random,lambda,alpha,rho1,rho2,N,m,Jointdata,applogli,surlmmcor,lmmcor)
+{
+  gradmatrix=matrix(0,nrow=N,ncol=18)
+  estmatrix=matrix(0,nrow=N,ncol=18)
+  samplestmatrix=matrix(0,nrow=1,ncol=18)
+  sdmatrix=matrix(0,nrow=N,ncol=18)
+  biasmatrix=matrix(0,nrow=N,ncol=18)
+  tvaluematrix=matrix(0,nrow=1,ncol=18)
+  colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51',
+                        'beta12','beta22','beta32','beta42',
+                        'D11','D22','D12','rho1','rho2',
+                        'lambda','sigma','alpha')
+  colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51',
+                         'gbeta12','gbeta22','gbeta32','gbeta42',
+                         'gD11','gD22','gD12','grho1','grho2',
+                         'glambda','gsigma','galpha')
+  colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51',
+                             'ssdbeta12','ssdbeta22','ssdbeta32','ssdbeta42',
+                             'ssdD11','ssdD22','ssdD12','ssdrho1','ssdrho2',
+                             'ssdlambda','ssdsigma','ssdalpha')
+  colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51',
+                       'sdbeta12','sdbeta22','sdbeta32','sdbeta42',
+                       'sdD11','sdD22','sdD12','sdrho1','sdrho2',
+                       'sdlambda','sdsigma','sdalpha')
+  colnames(biasmatrix)=c('bbeta01','bbeta11','bbeta21','bbeta31','bbeta41','bbeta51',
+                         'bbeta12','bbeta22','bbeta32','bbeta42',
+                         'bD11','bD22','bD12','brho1','brho2',
+                         'blambda','bsigma','balpha')
+  colnames(tvaluematrix)=c('tbeta01','tbeta11','tbeta21','tbeta31','tbeta41','tbeta51',
+                           'tbeta12','tbeta22','tbeta32','tbeta42',
+                           'tD11','tD22','tD12','trho1','trho2',
+                           'tlambda','tsigma','talpha')
+  i=0
+  k=1
+  while(k<=N)
+  {
+    i=i+1
+    estGHOb=nlm(f=applogli,p=c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],rho1,rho2,lambda,
+                               sigma,unique(alpha)),data=Jointdata[[i]],surlmmcor=surlmmcor,lmmcor=lmmcor,m=m, hessian=T,iterlim=1000)
+    if(estGHOb$code==1)
+    {
+      estmatrix[k,]=estGHOb$estimate
+      sdmatrix[k,]=sqrt(diag(solve(estGHOb$hessian)))
+      gradmatrix[k,]=estGHOb$gradient
+      biasmatrix[k,]=estmatrix[k,]-c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],
+                                     rho1,rho2,lambda,sigma,unique(alpha))
+      k=k+1
+    }
+  }
+  samplestmatrix[1,]=apply(estmatrix, 2, sd)
+  tvaluematrix[1,]=colMeans(biasmatrix)/samplestmatrix[1,]
+  results=list(gradmatrix,estmatrix,sdmatrix,colMeans(estmatrix),colMeans(biasmatrix),samplestmatrix,tvaluematrix,i)
+  return(results)
+}
+
+
+#Estimated parameters from the proposed joint model with R_ty=0 and R_y=I. This is equivalent to a conventional joint model 
+#assuming conditional independence.
+Y.lmmsurcondicopulajoineRGHObuncorest=function(beta1,beta2,sigma,var.random,lambda,alpha,N,m,Jointdata,applogli)
+{
+  gradmatrix=matrix(0,nrow=N,ncol=16)
+  estmatrix=matrix(0,nrow=N,ncol=16)
+  samplestmatrix=matrix(0,nrow=1,ncol=16)
+  sdmatrix=matrix(0,nrow=N,ncol=16)
+  biasmatrix=matrix(0,nrow=N,ncol=16)
+  tvaluematrix=matrix(0,nrow=1,ncol=16)
+  colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51',
+                        'beta12','beta22','beta32','beta42',
+                        'D11','D22','D12',
+                        'lambda','sigma','alpha')
+  colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51',
+                         'gbeta12','gbeta22','gbeta32','gbeta42',
+                         'gD11','gD22','gD12',
+                         'glambda','gsigma','galpha')
+  colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51',
+                             'ssdbeta12','ssdbeta22','ssdbeta32','ssdbeta42',
+                             'ssdD11','ssdD22','ssdD12',
+                             'ssdlambda','ssdsigma','ssdalpha')
+  colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51',
+                       'sdbeta12','sdbeta22','sdbeta32','sdbeta42',
+                       'sdD11','sdD22','sdD12',
+                       'sdlambda','sdsigma','sdalpha')
+  colnames(biasmatrix)=c('bbeta01','bbeta11','bbeta21','bbeta31','bbeta41','bbeta51',
+                         'bbeta12','bbeta22','bbeta32','bbeta42',
+                         'bD11','bD22','bD12',
+                         'blambda','bsigma','balpha')
+  colnames(tvaluematrix)=c('tbeta01','tbeta11','tbeta21','tbeta31','tbeta41','tbeta51',
+                           'tbeta12','tbeta22','tbeta32','tbeta42',
+                           'tD11','tD22','tD12',
+                           'tlambda','tsigma','talpha')
+  i=0
+  k=1
+  while(k<=N)
+  {
+    i=i+1
+    estGHOb=nlm(f=applogli,p=c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],lambda,
+                               sigma,unique(alpha)),data=Jointdata[[i]],m=m, hessian=T,iterlim=1000)
+    if(estGHOb$code==1)
+    {
+      estmatrix[k,]=estGHOb$estimate
+      sdmatrix[k,]=sqrt(diag(solve(estGHOb$hessian)))
+      gradmatrix[k,]=estGHOb$gradient
+      biasmatrix[k,]=estmatrix[k,]-c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],
+                                     lambda,sigma,unique(alpha))
+      k=k+1
+    }
+  }
+  samplestmatrix[1,]=apply(estmatrix, 2, sd)
+  tvaluematrix[1,]=colMeans(biasmatrix)/samplestmatrix[1,]
+  results=list(gradmatrix,estmatrix,sdmatrix,colMeans(estmatrix),colMeans(biasmatrix),samplestmatrix,tvaluematrix,i)
+  return(results)
+}
+
+
+#Estimated parameters from the proposed joint model with R_ty=0 but R_y not equal to I. 
+#This is model assuming conditional independence between the two sub-models but not within the longitudinal process.
+Y.lmmsurcondicopulajoineRGHObLongest=function(beta1,beta2,sigma,var.random,lambda,alpha,rho2,N,m,Jointdata,applogli,lmmcor)
+{
+  gradmatrix=matrix(0,nrow=N,ncol=17)
+  estmatrix=matrix(0,nrow=N,ncol=17)
+  samplestmatrix=matrix(0,nrow=1,ncol=17)
+  sdmatrix=matrix(0,nrow=N,ncol=17)
+  biasmatrix=matrix(0,nrow=N,ncol=17)
+  tvaluematrix=matrix(0,nrow=1,ncol=17)
+  colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51',
+                        'beta12','beta22','beta32','beta42',
+                        'D11','D22','D12','rho2',
+                        'lambda','sigma','alpha')
+  colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51',
+                         'gbeta12','gbeta22','gbeta32','gbeta42',
+                         'gD11','gD22','gD12','grho2',
+                         'glambda','gsigma','galpha')
+  colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51',
+                             'ssdbeta12','ssdbeta22','ssdbeta32','ssdbeta42',
+                             'ssdD11','ssdD22','ssdD12','ssdrho2',
+                             'ssdlambda','ssdsigma','ssdalpha')
+  colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51',
+                       'sdbeta12','sdbeta22','sdbeta32','sdbeta42',
+                       'sdD11','sdD22','sdD12','sdrho2',
+                       'sdlambda','sdsigma','sdalpha')
+  colnames(biasmatrix)=c('bbeta01','bbeta11','bbeta21','bbeta31','bbeta41','bbeta51',
+                         'bbeta12','bbeta22','bbeta32','bbeta42',
+                         'bD11','bD22','bD12','brho2',
+                         'blambda','bsigma','balpha')
+  colnames(tvaluematrix)=c('tbeta01','tbeta11','tbeta21','tbeta31','tbeta41','tbeta51',
+                           'tbeta12','tbeta22','tbeta32','tbeta42',
+                           'tD11','tD22','tD12','trho2',
+                           'tlambda','tsigma','talpha')
+  i=0
+  k=1
+  while(k<=N)
+  {
+    i=i+1
+    estGHOb=nlm(f=applogli,p=c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],rho2,lambda,
+                               sigma,unique(alpha)),data=Jointdata[[i]],lmmcor=lmmcor,m=m, hessian=T,iterlim=1000)
+    if(estGHOb$code==1)
+    {
+      estmatrix[k,]=estGHOb$estimate
+      sdmatrix[k,]=sqrt(diag(solve(estGHOb$hessian)))
+      gradmatrix[k,]=estGHOb$gradient
+      biasmatrix[k,]=estmatrix[k,]-c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],rho2,
+                                     lambda,sigma,unique(alpha))
+      k=k+1
+    }
+  }
+  samplestmatrix[1,]=apply(estmatrix, 2, sd)
+  tvaluematrix[1,]=colMeans(biasmatrix)/samplestmatrix[1,]
+  results=list(gradmatrix,estmatrix,sdmatrix,colMeans(estmatrix),colMeans(biasmatrix),samplestmatrix,tvaluematrix,i)
+  return(results)
+}
 
 
 
