@@ -139,7 +139,7 @@ Y.lmmsurcondicopulajoineRcorrNOPLOTni=function(beta1,beta2,n,sigma,var.random,la
 }
 
 
-#log-likelihood function for the model with extra correlation between the two sub-models as well as within longitudinal process after 
+#log-likelihood function for the model with extra correlation (R_ty) between the two sub-models and (R_y) within longitudinal process after 
 #conditioning on the random effects. 
 apploglikObmatrixni=function(theta,data,surlmmcor,lmmcor,m)
 {
@@ -216,6 +216,143 @@ apploglikObmatrixni=function(theta,data,surlmmcor,lmmcor,m)
   if(abs(ll)==Inf) ll=-1.0e40
   return(-ll)
 }
+
+#log-likelihood function for the model with R_ty=0 between the two sub-models and R_y=I within longitudinal process after 
+#conditioning on the random effects. This is equivalent to a conventional joint model assuming conditional independence.
+apploglikObuncormatrixni=function(theta,data,m)
+{
+  beta1=theta[1:6]
+  beta2=theta[7:10]
+  D11=theta[11]
+  D22=theta[12]
+  D12=theta[13]
+  lambda=theta[14]
+  sigma=theta[15]
+  alpha=theta[16]
+  timepoint=data$ti[data$subject==1]
+  ni=length(timepoint)
+  n=length(unique(data$subject))
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  ll=-1.0e40
+  if(sigma>0&lambda>0&is.positive.definite(D)>0)
+  {
+    ll=0
+    for(sub in 1:n)
+    {
+      Xi1=matrix(c(rep(1,ni),timepoint,data$treat[data$subject==sub],
+                   data$gender[data$subject==sub],as.numeric(data$age[data$subject==sub]==1),
+                   as.numeric(data$age[data$subject==sub]==2)),ncol=6)
+      Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+      Xi2=c(unique(data$treat[data$subject==sub]),unique(data$gender[data$subject==sub]),
+            unique(as.numeric(data$age[data$subject==sub]==1)),
+            unique(as.numeric(data$age[data$subject==sub]==2)))
+      obsti=unique(data$obsti[data$subject==sub])
+      indi=unique(data$indicator[data$subject==sub])
+      dimyi=sum(timepoint<=obsti)
+      Sigmayi=sigma^2*diag(ni)[1:dimyi,1:dimyi]
+      V11=matrix(Zi1[1:dimyi,],ncol=2)%*%D%*%t(matrix(Zi1[1:dimyi,],ncol=2))+Sigmayi
+      V22=D
+      V12=matrix(Zi1[1:dimyi,],ncol=2)%*%D
+      V21=t(V12)
+      mubicon=V21%*%solve(V11)%*%(data$resp[data$subject==sub]-Xi1%*%beta1)[1:dimyi]
+      Sigmabicon=V22-V21%*%solve(V11)%*%V12
+      roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+      roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+      bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+      wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+      Cij=lambda*exp(c(Xi2%*%beta2)+alpha*bij[1,])
+      hij=Cij*exp(alpha*bij[2,]*obsti)
+      Sij=exp(-Cij/(alpha*bij[2,])*(exp(alpha*bij[2,]*obsti)-1))
+      fij=hij*Sij
+      Zyij=(matrix(rep(data$resp[data$subject==sub],m^2),ncol=m^2)-
+              matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)[1:dimyi,]
+      ftijcon=indi*fij+(1-indi)*Sij
+      posticondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
+      ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$resp[data$subject==sub]-Xi1%*%beta1)[1:dimyi])%*%
+               solve(V11)%*%(data$resp[data$subject==sub]-Xi1%*%beta1)[1:dimyi]+log(posticondimean))
+    }
+  }
+  if(is.na(ll)) ll=-1.0e40
+  if(abs(ll)==Inf) ll=-1.0e40
+  return(-ll)
+}
+
+#log-likelihood function for the model with R_ty=0 between the two sub-models after conditioning on the random effects. 
+#This is model assuming conditional independence between the two sub-models but not within the longitudinal process.
+apploglikObLongmatrixni=function(theta,data,lmmcor,m)
+{
+  beta1=theta[1:6]
+  beta2=theta[7:10]
+  D11=theta[11]
+  D22=theta[12]
+  D12=theta[13]
+  rho2=theta[14]
+  lambda=theta[15]
+  sigma=theta[16]
+  alpha=theta[17]
+  timepoint=data$ti[data$subject==1]
+  ni=length(timepoint)
+  R21=rep(0,ni)
+  R12=t(R21)
+  R11=1
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,ni)),(ni-1)),1),ncol=ni)
+  if(lmmcor=="car") R22=car1(timepoint,rho2)
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  Sigma=diag(c(1,rep(sigma,ni)))%*%R%*%diag(c(1,rep(sigma,ni)))
+  Sigmay=Sigma[-1,-1]
+  n=length(unique(data$subject))
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  ll=-1.0e40
+  if(is.positive.definite(R)>0&sigma>0&lambda>0&is.positive.definite(D)>0)
+  {
+    ll=0
+    for(sub in 1:n)
+    {
+      Xi1=matrix(c(rep(1,ni),timepoint,data$treat[data$subject==sub],
+                   data$gender[data$subject==sub],as.numeric(data$age[data$subject==sub]==1),
+                   as.numeric(data$age[data$subject==sub]==2)),ncol=6)
+      Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+      Xi2=c(unique(data$treat[data$subject==sub]),unique(data$gender[data$subject==sub]),
+            unique(as.numeric(data$age[data$subject==sub]==1)),
+            unique(as.numeric(data$age[data$subject==sub]==2)))
+      obsti=unique(data$obsti[data$subject==sub])
+      indi=unique(data$indicator[data$subject==sub])
+      dimi=sum(timepoint<=obsti)+1
+      dimyi=dimi-1
+      Sigmai=Sigma[1:dimi,1:dimi]
+      Sigmayi=matrix(Sigmay[1:dimyi,1:dimyi],ncol=dimyi)
+      V11=matrix(Zi1[1:dimyi,],ncol=2)%*%D%*%t(matrix(Zi1[1:dimyi,],ncol=2))+Sigmayi
+      V22=D
+      V12=matrix(Zi1[1:dimyi,],ncol=2)%*%D
+      V21=t(V12)
+      mubicon=V21%*%solve(V11)%*%(data$resp[data$subject==sub]-Xi1%*%beta1)[1:dimyi]
+      Sigmabicon=V22-V21%*%solve(V11)%*%V12
+      roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+      roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+      bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+      wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+      Cij=lambda*exp(c(Xi2%*%beta2)+alpha*bij[1,])
+      hij=Cij*exp(alpha*bij[2,]*obsti)
+      Sij=exp(-Cij/(alpha*bij[2,])*(exp(alpha*bij[2,]*obsti)-1))
+      fij=hij*Sij
+      Zyij=(matrix(rep(data$resp[data$subject==sub],m^2),ncol=m^2)-
+              matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)[1:dimyi,]
+      ftijcon=indi*fij+(1-indi)*Sij
+      posticondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
+      ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$resp[data$subject==sub]-Xi1%*%beta1)[1:dimyi])%*%
+               solve(V11)%*%(data$resp[data$subject==sub]-Xi1%*%beta1)[1:dimyi]+log(posticondimean))
+    }
+  }
+  if(is.na(ll)) ll=-1.0e40
+  if(abs(ll)==Inf) ll=-1.0e40
+  return(-ll)
+}
+
+
 
 
 
