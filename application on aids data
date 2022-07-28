@@ -571,7 +571,9 @@ cd4fitLong=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dy
 }
 
 
-#Calculate AUC and PE
+#calculate AUC and PE for censored data
+
+#function for providing some imputs for "dynaAUC.cen" and "dynaPE.cen" functions later.
 cd4dynasurgroup.cen=function(Data,beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,dynati,predinterv,m,surlmmcor)
 {
   allprob=0
