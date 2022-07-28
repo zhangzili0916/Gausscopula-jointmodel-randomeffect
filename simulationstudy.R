@@ -628,7 +628,7 @@ fitLong=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynat
 
 #calculate AUC and PE for censored data
 
-#function for providing some imputs for "dynaAUC.cen" and "dynaPE.cen" functions later.
+#function for providing some imputs for "dynaAUC.cen" and "dynaPE.cen" functions later on.
 dynasurgroup.cen=function(Data,beta1,beta2,D11,D22,D12,etapar,lambda,sigma,alpha,etaord,dynati,predinterv,m,
                           tmax,copula,nu)
 {
