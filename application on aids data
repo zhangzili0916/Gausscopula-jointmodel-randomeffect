@@ -447,7 +447,7 @@ cd4fbipos=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dyn
   return(fbicon)
 }
 
-#maximise  f(b_i|T_i,y_i) to get \hat{b_i}
+#maximise  f(b_i|T_i,y_i) to get hat^{b_i}
 cd4dynabi=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,m,surlmmcor)
 {
   timepoint=data$obstime
@@ -487,3 +487,141 @@ cd4dynabi=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dyn
   results=list(bihat,mubicon)
   return(results)
 }
+
+
+#predict survival probabilities
+cd4predSurcop=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,predinterv,m,surlmmcor)
+{
+  timepoint=data$obstime
+  ni=length(timepoint)
+  if (surlmmcor=="unstru") R21=rho1[match(timepoint,c(0,2,6,12,18))]
+  if (surlmmcor=="ex") R21=rep(rho1,5)[match(timepoint,c(0,2,6,12,18))]
+  if (surlmmcor=="sqrar") R21=c(rho1^16,rho1^8,rho1^4,rho1^2,rho1)[match(timepoint,c(0,2,6,12,18))]
+  R12=t(R21)
+  R11=1
+  R22=AR1(5,rho2)[match(timepoint,c(0,2,6,12,18)),match(timepoint,c(0,2,6,12,18))]
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  Sigma=diag(c(1,rep(sigma,ni)))%*%R%*%diag(c(1,rep(sigma,ni)))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Xi1=matrix(c(rep(1,ni),timepoint,data$obstime*(as.numeric(data$drug)-1),
+               (as.numeric(data$gender)-1),
+               (as.numeric(data$prevOI)-1),
+               (as.numeric(data$AZT)-1)),ncol=6)
+  Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+  Xi2=c(unique(as.numeric(data$drug)-1),
+        unique(as.numeric(data$gender)-1),
+        unique(as.numeric(data$prevOI)-1),
+        unique(as.numeric(data$AZT)-1))
+  if(dynati>=unique(data$time))  
+  {
+    t=seq(unique(data$time),predinterv,by=0.05)
+    dimyi=sum(timepoint<=unique(data$time))
+  }
+  if(dynati<unique(data$time))  
+  {
+    t=seq(dynati,predinterv,by=0.05)
+    dimyi=sum(timepoint<=dynati)
+  }
+  Sigmayi=Sigma[-1,-1][1:dimyi,1:dimyi]
+  hatbi=cd4dynabi(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,
+                  surlmmcor=surlmmcor,alpha=alpha,data=data,dynati=dynati,m=m)[[1]]
+  numbasi=0
+  Si=0
+  for(k in 1:length(t))
+  { 
+  nodeik=0
+  Cik=0
+  numbasi[k]=sum(t[k]>seq(0,max(aids$time),length=8))
+  nodeik=c(seq(0,max(aids$time),length=8)[1:numbasi[k]],t[k])
+  Cik=lambda[1:numbasi[k]]*exp(c(Xi2%*%beta2)+alpha*hatbi[1])
+  Si[k]=exp(sum(-Cik/(alpha*hatbi[2])*(exp(nodeik[2:(numbasi[k]+1)]*alpha*hatbi[2])-exp(nodeik[1:numbasi[k]]*alpha*hatbi[2]))))
+  }
+  Zyi=c(data$CD4-Xi1%*%beta1-Zi1%*%hatbi)[1:dimyi]
+  muticon=as.numeric(t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Zyi)
+  sigmaticon=as.numeric(sqrt(1-t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Sigma[1,-1][1:dimyi]))
+  predi=pnorm((qnorm(Si)+muticon)/sigmaticon)/pnorm((qnorm(Si[1])+muticon)/sigmaticon)
+  results=list(t,Si/Si[1],predi,dimyi,hatbi)
+  return(results)
+}
+
+#predict longitudinal trajectory
+cd4fitLong=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,m,surlmmcor)
+{
+  timepoint=data$obstime
+  if(dynati>=unique(data$time))  
+  {
+    t=seq(0,unique(data$time),by=0.05)
+    dimyi=sum(timepoint<=unique(data$time))
+  }
+  if(dynati<unique(data$time))  
+  {
+    t=seq(0,dynati,by=0.05)
+    dimyi=sum(timepoint<=dynati)
+  }
+  hatbi=cd4dynabi(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,rho1=rho1,rho2=rho2,lambda=lambda,
+                  sigma=sigma,alpha=alpha,data=data,dynati=dynati,m=m,surlmmcor=surlmmcor)[[1]]
+  Xi1new=matrix(c(rep(1,length(t)),t,t*unique(as.numeric(data$drug)-1),
+                  rep(unique(as.numeric(data$gender)-1),length(t)),
+                  rep(unique(as.numeric(data$prevOI)-1),length(t)),
+                  rep(unique(as.numeric(data$AZT)-1),length(t))),ncol=6)
+  Zi1new=matrix(c(rep(1,length(t)),t),ncol=2)
+  fityi=c(Xi1new%*%beta1+Zi1new%*%hatbi)
+  results=list(t,fityi,timepoint[1:dimyi],hatbi)
+  return(results)
+}
+
+
+#Calculate AUC and PE
+cd4dynasurgroup.cen=function(Data,beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,dynati,predinterv,m,surlmmcor)
+{
+  allprob=0
+  j=0
+  i=1
+  ind=0
+  obst=0
+  for(i in unique(Data$id))
+  { 
+    Datai=Data[Data$id==i,]
+    obsti=unique(Datai$time)
+    indi=unique(Datai$death)
+    if(obsti>dynati)
+    {
+      j=j+1
+      allprob[j]=cd4predSurcop(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,
+                      alpha=alpha,data=Datai,dynati=dynati,predinterv=predinterv,m=m,acc=predinterv-dynati,surlmmcor=surlmmcor)[[3]][-1]
+      ind[j]=indi;obst[j]=obsti
+    }
+  }
+  results=list(j,allprob,ind,obst)
+  return(results)
+}
+
+
+dynaAUC.cen=function(probs,ind,obst,dynati,predinterv)
+{
+  upcount=0;lowcount=0
+  for(i in 1:length(probs))
+  {
+    if(obst[i]<=predinterv&obst[i]>dynati&ind[i]==1)
+    {
+      upcount=sum((obst>predinterv)*(probs[i]<probs))+sum((obst>obst[i]&obst<=predinterv&ind==0)*(probs[i]<probs)*probs)+upcount
+      lowcount=sum(obst>predinterv)+sum((obst>obst[i]&obst<=predinterv&ind==0)*probs)+lowcount
+    }
+    if(obst[i]<=predinterv&obst[i]>dynati&ind[i]==0)
+    {
+      upcount=sum((obst>predinterv)*(probs[i]<probs)*(1-probs[i]))+
+        sum((obst>obst[i]&obst<=predinterv&ind==0)*(probs[i]<probs)*(1-probs[i])*probs)+upcount
+      lowcount=sum((obst>predinterv)*(1-probs[i]))+sum((obst>obst[i]&obst<=predinterv&ind==0)*(1-probs[i])*probs)+lowcount
+    }
+  }
+  return(upcount/lowcount)
+}
+
+dynaPE.cen=function(probs,ind,obst,dynati,predinterv)
+{
+  upcount=sum((obst>predinterv)*(1-probs)^2+ind*(obst<predinterv)*(0-probs)^2+(1-ind)*(obst<predinterv)*
+                (probs*(1-probs)^2+(1-probs)*(0-probs)^2))
+  lowcount=sum(obst>dynati)
+  return(upcount/lowcount)
+}
+
