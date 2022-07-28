@@ -15,7 +15,8 @@ library(Matrix)
 library(emdbook)
 library("rgl")
 
-#Function for produce nodes and weights for Gaussian quar
+
+#function for generating Gaussian hermite nodes and their corresponding weights
 GaussianHermite <- function(r){
   esp <- 3.0e-14
   pim4 <- 1/sqrt(sqrt(pi)) 	
@@ -63,3 +64,426 @@ lme(CD4~obstime+drug+drug:obstime+gender+prevOI+AZT,random=~obstime|patient,data
 lme(CD4~obstime+drug+drug:obstime+gender+prevOI+AZT,random=~obstime|patient,data=aids,method="ML",cor=corAR1(form=~1|patient))
 lme(CD4~obstime+drug+drug:obstime+gender+prevOI+AZT,random=~obstime|patient,data=aids,method="ML",cor=corCAR1(form=~1|patient))
 lme(CD4~obstime+drug+drug:obstime+gender+prevOI+AZT,random=~obstime|patient,data=aids,method="ML",cor=corSymm(form=~1|patient))
+
+#fit a joint model by joint function from "joineR" package in R to obtain initial value
+aids.long=aids[,c("patient","CD4","obstime")]
+aids.surv=aids.id[,c("patient","Time","death")]
+aids.cov <- aids.id[,c("patient","gender","drug","prevOI","AZT")]
+aids.jd1=jointdata(longitudinal = aids.long,
+                   baseline = aids.cov,
+                   survival = aids.surv,
+                   id.col = "patient",
+                   time.col = "obstime")
+aidsfit <- joint(data = aids.jd1,
+                 long.formula = CD4 ~ obstime+obstime:drug+gender+prevOI+AZT ,
+                 surv.formula = Surv(Time, death) ~ drug+gender+prevOI+AZT,
+                 model = "intslope",sepassoc=F)
+summary(aidsfit)
+
+#log-likelihood function for joint model assuming constant correlation between the two sub-models
+loglikecondicopulaCD4.7ba=function(theta,data,lmmcor,m)
+{
+  beta1=theta[1:6]
+  beta2=theta[7:10]
+  D11=theta[11]
+  D22=theta[12]
+  D12=theta[13]
+  rho1=theta[14]
+  rho2=theta[15]
+  lambda=theta[16:22]
+  sigma=theta[23]
+  alpha=theta[24]
+  R11=1
+  R21=rep(rho1,5)
+  R12=t(R21)
+  if(lmmcor=="ar") R22=matrix(c(1,rho2,rho2^2,rho2^3,rho2^4,
+                                rho2,1,rho2,rho2^2,rho2^3,
+                                rho2^2,rho2,1,rho2,rho2^2,
+                                rho2^3,rho2^2,rho2,1,rho2,
+                                rho2^4,rho2^3,rho2^2,rho2,1),ncol=5)
+  if(lmmcor=="car") R22=matrix(c(1,rho2^2,rho2^6,rho2^12,rho2^18,
+                                 rho2^2,1,rho2^4,rho2^10,rho2^16,
+                                 rho2^6,rho2^4,1,rho2^6,rho2^12,
+                                 rho2^12,rho2^10,rho2^6,1,rho2^6,
+                                 rho2^18,rho2^16,rho2^12,rho2^6,1),ncol=5)
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,5)),4),1),ncol=5)
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Sigma=diag(c(1,rep(sigma,5)))%*%R%*%diag(c(1,rep(sigma,5)))
+  Sigmay=Sigma[-1,-1]
+  n=length(unique(data$patient))
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  s=c(0,2,6,12,18)
+  ll=-1.0e40
+  if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,7))==7&is.positive.definite(D)>0)
+  {
+    ll=0
+    for(i in 1:n)
+    {
+      Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
+                   data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
+                   (as.numeric(data$gender[data$patient==i])-1),
+                   (as.numeric(data$prevOI[data$patient==i])-1),
+                   (as.numeric(data$AZT[data$patient==i])-1)),ncol=6)
+      Xi2=c(unique(as.numeric(data$drug[data$patient==i])-1),
+            unique(as.numeric(data$gender[data$patient==i])-1),
+            unique(as.numeric(data$prevOI[data$patient==i])-1),
+            unique(as.numeric(data$AZT[data$patient==i])-1))
+      surti=unique(data$Time[data$patient==i])
+      indi=unique(data$death[data$patient==i])
+      obsti=data$obstime[data$patient==i]
+      posi=c(1,match(obsti,s)+1)
+      dimi=length(posi)
+      dimyi=dimi-1
+      Zi1=matrix(c(rep(1,5),s),ncol=2)[match(obsti,s),]
+      Sigmai=matrix(Sigma[posi,posi],ncol=dimi)
+      Sigmayi=matrix(Sigmai[-1,-1],ncol=dimyi)
+      V11=matrix(Zi1,ncol=2)%*%D%*%t(matrix(Zi1,ncol=2))+Sigmayi
+      V22=D
+      V12=matrix(Zi1,ncol=2)%*%D
+      V21=t(V12)
+      mubicon=V21%*%solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)
+      Sigmabicon=V22-V21%*%solve(V11)%*%V12
+      roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+      roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+      bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+      wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+      Cij=lambda%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
+      numbasi=sum(surti>seq(0,max(aids$Time),length=8))
+      nodei=c(seq(0,max(aids$Time),length=8)[1:numbasi],surti)
+      hij=Cij[numbasi,]*exp(alpha*bij[2,]*surti)
+      Sij=exp(colSums(-Cij[1:numbasi,]/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
+                (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
+      fij=hij*Sij
+      Zyij=(matrix(rep(data$CD4[data$patient==i],m^2),ncol=m^2)-
+              matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)
+      mutijcon=t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Zyij
+      sigmatijcon=sqrt(1-t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Sigmai[1,-1])
+      ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
+        (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
+      postijcondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
+      ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$CD4[data$patient==i]-Xi1%*%beta1))%*%
+               solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)+log(postijcondimean))
+    }
+  }
+  if(is.na(ll)) ll=-1.0e40
+  if(abs(ll)==Inf) ll=-1.0e40
+  return(-ll)
+}
+
+#log-likelihood function for a conventional joint model assuming conditional independence
+loglikecondicopulaCD4uncor.7ba=function(theta,data,lmmcor,m)
+{
+  beta1=theta[1:6]
+  beta2=theta[7:10]
+  D11=theta[11]
+  D22=theta[12]
+  D12=theta[13]
+  rho1=0
+  rho2=0
+  lambda=theta[14:20]
+  sigma=theta[21]
+  alpha=theta[22]
+  R11=1
+  R21=rep(rho1,5)
+  R12=t(R21)
+  if(lmmcor=="ar") R22=matrix(c(1,rho2,rho2^2,rho2^3,rho2^4,
+                                rho2,1,rho2,rho2^2,rho2^3,
+                                rho2^2,rho2,1,rho2,rho2^2,
+                                rho2^3,rho2^2,rho2,1,rho2,
+                                rho2^4,rho2^3,rho2^2,rho2,1),ncol=5)
+  if(lmmcor=="car") R22=matrix(c(1,rho2^2,rho2^6,rho2^12,rho2^18,
+                                 rho2^2,1,rho2^4,rho2^10,rho2^16,
+                                 rho2^6,rho2^4,1,rho2^6,rho2^12,
+                                 rho2^12,rho2^10,rho2^6,1,rho2^6,
+                                 rho2^18,rho2^16,rho2^12,rho2^6,1),ncol=5)
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,5)),4),1),ncol=5)
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Sigma=diag(c(1,rep(sigma,5)))%*%R%*%diag(c(1,rep(sigma,5)))
+  Sigmay=Sigma[-1,-1]
+  n=length(unique(data$patient))
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  s=c(0,2,6,12,18)
+  ll=-1.0e40
+  if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,7))==7&is.positive.definite(D)>0)
+  {
+    ll=0
+    for(i in 1:n)
+    {
+      Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
+                   data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
+                   (as.numeric(data$gender[data$patient==i])-1),
+                   (as.numeric(data$prevOI[data$patient==i])-1),
+                   (as.numeric(data$AZT[data$patient==i])-1)),ncol=6)
+      Xi2=c(unique(as.numeric(data$drug[data$patient==i])-1),
+            unique(as.numeric(data$gender[data$patient==i])-1),
+            unique(as.numeric(data$prevOI[data$patient==i])-1),
+            unique(as.numeric(data$AZT[data$patient==i])-1))
+      surti=unique(data$Time[data$patient==i])
+      indi=unique(data$death[data$patient==i])
+      obsti=data$obstime[data$patient==i]
+      posi=c(1,match(obsti,s)+1)
+      dimi=length(posi)
+      dimyi=dimi-1
+      Zi1=matrix(c(rep(1,5),s),ncol=2)[match(obsti,s),]
+      Sigmai=matrix(Sigma[posi,posi],ncol=dimi)
+      Sigmayi=matrix(Sigmai[-1,-1],ncol=dimyi)
+      V11=matrix(Zi1,ncol=2)%*%D%*%t(matrix(Zi1,ncol=2))+Sigmayi
+      V22=D
+      V12=matrix(Zi1,ncol=2)%*%D
+      V21=t(V12)
+      mubicon=V21%*%solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)
+      Sigmabicon=V22-V21%*%solve(V11)%*%V12
+      roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+      roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+      bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+      wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+      Cij=lambda%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
+      numbasi=sum(surti>seq(0,max(aids$Time),length=8))
+      nodei=c(seq(0,max(aids$Time),length=8)[1:numbasi],surti)
+      hij=Cij[numbasi,]*exp(alpha*bij[2,]*surti)
+      Sij=exp(colSums(-Cij[1:numbasi,]/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
+                        (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
+      fij=hij*Sij
+      Zyij=(matrix(rep(data$CD4[data$patient==i],m^2),ncol=m^2)-
+              matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)
+      mutijcon=t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Zyij
+      sigmatijcon=sqrt(1-t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Sigmai[1,-1])
+      ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
+        (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
+      postijcondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
+      ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$CD4[data$patient==i]-Xi1%*%beta1))%*%
+               solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)+log(postijcondimean))
+    }
+  }
+  if(is.na(ll)) ll=-1.0e40
+  if(abs(ll)==Inf) ll=-1.0e40
+  return(-ll)
+}
+
+#log-likelihood function for joint model assuming conditional independence between the two sub-models but the correlation within the longitudinal 
+#process is considered
+
+loglikecondicopulaCD4Suruncor.7ba=function(theta,data,lmmcor,m)
+{
+  beta1=theta[1:6]
+  beta2=theta[7:10]
+  D11=theta[11]
+  D22=theta[12]
+  D12=theta[13]
+  rho1=0
+  rho2=theta[14]
+  lambda=theta[15:21]
+  sigma=theta[22]
+  alpha=theta[23]
+  R11=1
+  R21=rep(rho1,5)
+  R12=t(R21)
+  if(lmmcor=="ar") R22=matrix(c(1,rho2,rho2^2,rho2^3,rho2^4,
+                                rho2,1,rho2,rho2^2,rho2^3,
+                                rho2^2,rho2,1,rho2,rho2^2,
+                                rho2^3,rho2^2,rho2,1,rho2,
+                                rho2^4,rho2^3,rho2^2,rho2,1),ncol=5)
+  if(lmmcor=="car") R22=matrix(c(1,rho2^2,rho2^6,rho2^12,rho2^18,
+                                 rho2^2,1,rho2^4,rho2^10,rho2^16,
+                                 rho2^6,rho2^4,1,rho2^6,rho2^12,
+                                 rho2^12,rho2^10,rho2^6,1,rho2^6,
+                                 rho2^18,rho2^16,rho2^12,rho2^6,1),ncol=5)
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,5)),4),1),ncol=5)
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Sigma=diag(c(1,rep(sigma,5)))%*%R%*%diag(c(1,rep(sigma,5)))
+  Sigmay=Sigma[-1,-1]
+  n=length(unique(data$patient))
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  s=c(0,2,6,12,18)
+  ll=-1.0e40
+  if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,7))==7&is.positive.definite(D)>0)
+  {
+    ll=0
+    for(i in 1:n)
+    {
+      Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
+                   data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
+                   (as.numeric(data$gender[data$patient==i])-1),
+                   (as.numeric(data$prevOI[data$patient==i])-1),
+                   (as.numeric(data$AZT[data$patient==i])-1)),ncol=6)
+      Xi2=c(unique(as.numeric(data$drug[data$patient==i])-1),
+            unique(as.numeric(data$gender[data$patient==i])-1),
+            unique(as.numeric(data$prevOI[data$patient==i])-1),
+            unique(as.numeric(data$AZT[data$patient==i])-1))
+      surti=unique(data$Time[data$patient==i])
+      indi=unique(data$death[data$patient==i])
+      obsti=data$obstime[data$patient==i]
+      posi=c(1,match(obsti,s)+1)
+      dimi=length(posi)
+      dimyi=dimi-1
+      Zi1=matrix(c(rep(1,5),s),ncol=2)[match(obsti,s),]
+      Sigmai=matrix(Sigma[posi,posi],ncol=dimi)
+      Sigmayi=matrix(Sigmai[-1,-1],ncol=dimyi)
+      V11=matrix(Zi1,ncol=2)%*%D%*%t(matrix(Zi1,ncol=2))+Sigmayi
+      V22=D
+      V12=matrix(Zi1,ncol=2)%*%D
+      V21=t(V12)
+      mubicon=V21%*%solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)
+      Sigmabicon=V22-V21%*%solve(V11)%*%V12
+      roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+      roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+      bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+      wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+      Cij=lambda%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
+      numbasi=sum(surti>seq(0,max(aids$Time),length=8))
+      nodei=c(seq(0,max(aids$Time),length=8)[1:numbasi],surti)
+      hij=Cij[numbasi,]*exp(alpha*bij[2,]*surti)
+      Sij=exp(colSums(-Cij[1:numbasi,]/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
+                        (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
+      fij=hij*Sij
+      Zyij=(matrix(rep(data$CD4[data$patient==i],m^2),ncol=m^2)-
+              matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)
+      mutijcon=t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Zyij
+      sigmatijcon=sqrt(1-t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Sigmai[1,-1])
+      ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
+        (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
+      postijcondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
+      ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$CD4[data$patient==i]-Xi1%*%beta1))%*%
+               solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)+log(postijcondimean))
+    }
+  }
+  if(is.na(ll)) ll=-1.0e40
+  if(abs(ll)==Inf) ll=-1.0e40
+  return(-ll)
+}
+
+#aids data dynamic prediction
+
+#estimation from "loglikecondicopulaCD4.7ba" by assuming AR1 for correlation within longitudinal process, i.e., select "ar"
+cd4thetacor=c(10.646855323,-0.210860423,0.002077953,-0.223121372,-4.759767688,-0.293948354,0.264092897,   
+              -0.228431393,1.731049702,0.138136575,15.224239393,0.023137695,0.010801544,0.762658327,
+              0.186173444,0.003721422,0.005869335,0.006419525,0.011645655,0.009431307,0.010115548,0.011264185,
+              1.933341752,-0.237822764)     
+#estimation from "loglikecondicopulaCD4uncor.7ba"
+cd4thetauncor=c(10.610586319,-0.185950370,0.017039816,-0.249453592,-4.695488148,-0.283555195,0.300763322,
+                -0.307632614,1.744091309,0.170588412,15.934446863,0.032021842,-0.093281225,0.003633567,
+                0.005779379,0.006450096,0.012110837,0.010327712,0.011558554,0.014836405,1.738113555,
+                -0.246403545)
+#estimation from "loglikecondicopulaCD4Suruncor.7ba" by assuming AR1 for correlation within longitudinal process, i.e., select "ar"
+cd4thetaLong=c(10.810226940,-0.183585492,0.017095720,-0.439140272,-4.777655120,-0.241655812,0.283151479,
+               -0.261233741,1.763376077,0.160621725,16.193343487,0.027357713,
+               -0.081765366,0.102810014,0.003480801,0.005544914,0.006200316,0.011666809,0.009971450,
+               0.011135253,0.014367536,1.825843113,-0.248009145)
+
+#posterior of random effect b_i.  f(b_i|T_i,y_i)
+cd4fbipos=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,bi,m,surlmmcor)
+{
+  timepoint=data$obstime
+  ni=length(timepoint)
+  if (surlmmcor=="unstru") R21=rho1[match(timepoint,c(0,2,6,12,18))]
+  if (surlmmcor=="ex") R21=rep(rho1,5)[match(timepoint,c(0,2,6,12,18))]
+  if (surlmmcor=="sqrar") R21=c(rho1^16,rho1^8,rho1^4,rho1^2,rho1)[match(timepoint,c(0,2,6,12,18))]
+  R12=t(R21)
+  R11=1
+  R22=AR1(5,rho2)[match(timepoint,c(0,2,6,12,18)),match(timepoint,c(0,2,6,12,18))]
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  Sigma=diag(c(1,rep(sigma,ni)))%*%R%*%diag(c(1,rep(sigma,ni)))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  Xi1=matrix(c(rep(1,ni),timepoint,data$obstime*(as.numeric(data$drug)-1),
+               (as.numeric(data$gender)-1),
+               (as.numeric(data$prevOI)-1),
+               (as.numeric(data$AZT)-1)),ncol=6)
+  Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+  Xi2=c(unique(as.numeric(data$drug)-1),
+        unique(as.numeric(data$gender)-1),
+        unique(as.numeric(data$prevOI)-1),
+        unique(as.numeric(data$AZT)-1))
+  obsti=unique(data$time)
+  if(dynati<obsti|obsti==18) {indi=0
+  t=min(dynati,obsti)} else {indi=1
+  t=obsti}
+  dimyi=sum(timepoint<=t)
+  Sigmayi=Sigma[-1,-1][1:dimyi,1:dimyi]
+  V11=matrix(Zi1[1:dimyi,],ncol=2)%*%D%*%t(matrix(Zi1[1:dimyi,],ncol=2))+Sigmayi
+  V22=D
+  V12=matrix(Zi1[1:dimyi,],ncol=2)%*%D
+  V21=t(V12)
+  mubicon=V21%*%solve(V11)%*%(data$CD4-Xi1%*%beta1)[1:dimyi]
+  Sigmabicon=V22-V21%*%solve(V11)%*%V12
+  numbasi=sum(t>seq(0,max(aids$time),length=8))
+  Ci=lambda[1:numbasi]*exp(c(Xi2%*%beta2)+alpha*bi[1])
+  nodei=c(seq(0,max(aids$time),length=8)[1:numbasi],t)
+  hi=Ci[numbasi]*exp(alpha*bi[2]*t)
+  Si=exp(sum(-Ci/(alpha*bi[2])*
+                    (exp(nodei[2:(numbasi+1)]*alpha*bi[2])-exp(nodei[1:numbasi]*alpha*bi[2]))))
+  fi=hi*Si
+  Zyi=(matrix(rep(data$CD4,length(bi[1])),ncol=length(bi[1]))-
+         matrix(rep(Xi1%*%beta1,length(bi[1])),ncol=length(bi[1]))-Zi1%*%bi)[1:dimyi,]
+  muticon=as.numeric(t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Zyi)
+  sigmaticon=as.numeric(sqrt(1-t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Sigma[1,-1][1:dimyi]))
+  fticon=indi*dnorm(-qnorm(Si),muticon,sigmaticon)*fi/dnorm(-qnorm(Si))+
+    (1-indi)*(pnorm((qnorm(Si)+muticon)/sigmaticon))
+  postijcondimean=0
+  roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+  roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+  bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+  wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+  Cij=lambda[1:numbasi]%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
+  hij=Cij[numbasi,]*exp(alpha*bij[2,]*t)
+  Sij=exp(colSums(-Cij/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
+                  (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
+  fij=hij*Sij
+  Zyij=(matrix(rep(data$CD4,m^2),ncol=m^2)-
+          matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)[1:dimyi,]
+  mutijcon=t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Zyij
+  sigmatijcon=sqrt(1-t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Sigma[1,-1][1:dimyi])
+  ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
+    (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
+  postijcondimean=sum(ftijcon*wij)
+  fbicon=fticon*dmvnorm(t(bi),c(mubicon),Sigmabicon)/postijcondimean
+  return(fbicon)
+}
+
+#maximise  f(b_i|T_i,y_i) to get \hat{b_i}
+cd4dynabi=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,m,surlmmcor)
+{
+  timepoint=data$obstime
+  ni=length(timepoint)
+  if (surlmmcor=="unstru") R21=rho1[match(timepoint,c(0,2,6,12,18))]
+  if (surlmmcor=="ex") R21=rep(rho1,5)[match(timepoint,c(0,2,6,12,18))]
+  if (surlmmcor=="sqrar") R21=c(rho1^16,rho1^8,rho1^4,rho1^2,rho1)[match(timepoint,c(0,2,6,12,18))]
+  R12=t(R21)
+  R11=1
+  R22=AR1(5,rho2)[match(timepoint,c(0,2,6,12,18)),match(timepoint,c(0,2,6,12,18))]
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  Sigma=diag(c(1,rep(sigma,ni)))%*%R%*%diag(c(1,rep(sigma,ni)))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Xi1=matrix(c(rep(1,ni),timepoint,data$obstime*(as.numeric(data$drug)-1),
+               (as.numeric(data$gender)-1),
+               (as.numeric(data$prevOI)-1),
+               (as.numeric(data$AZT)-1)),ncol=6)
+  Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+  Xi2=c(unique(as.numeric(data$drug)-1),
+        unique(as.numeric(data$gender)-1),
+        unique(as.numeric(data$prevOI)-1),
+        unique(as.numeric(data$AZT)-1))
+  obsti=unique(data$time)
+  if(dynati<obsti|obsti==18) {indi=0
+  t=min(dynati,obsti)} else {indi=1
+  t=obsti}
+  dimyi=sum(timepoint<=t)
+  Sigmayi=Sigma[-1,-1][1:dimyi,1:dimyi]
+  V11=matrix(Zi1[1:dimyi,],ncol=2)%*%D%*%t(matrix(Zi1[1:dimyi,],ncol=2))+Sigmayi
+  V22=D
+  V12=matrix(Zi1[1:dimyi,],ncol=2)%*%D
+  V21=t(V12)
+  mubicon=V21%*%solve(V11)%*%(data$CD4-Xi1%*%beta1)[1:dimyi]
+  bihat=optim(cd4fbipos,par=c(mubicon),beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,
+              rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,alpha=alpha,data=data,dynati=dynati,m=m,
+              hessian=T,surlmmcor=surlmmcor,control=list(fnscale=-1,maxit=20000))$par
+  results=list(bihat,mubicon)
+  return(results)
+}
