@@ -353,177 +353,336 @@ apploglikObLongmatrixni=function(theta,data,lmmcor,m)
 }
 
 
-#Estimated parameters from the proposed joint model with R_ty not equal to 0 and R_y not equal to identity matrix I
-Y.lmmsurcondicopulajoineRGHObcorest=function(beta1,beta2,sigma,var.random,lambda,alpha,rho1,rho2,N,m,Jointdata,applogli,surlmmcor,lmmcor)
+#Estimation of observed data by integrate out bi in ni measurements
+Y.lmmsurcondicopulajoineRGHObest=function(initpara,truepara,N,m,Jointdata,applogli,surlmmcor,lmmcor)
 {
-  gradmatrix=matrix(0,nrow=N,ncol=18)
-  estmatrix=matrix(0,nrow=N,ncol=18)
-  samplestmatrix=matrix(0,nrow=1,ncol=18)
-  sdmatrix=matrix(0,nrow=N,ncol=18)
-  biasmatrix=matrix(0,nrow=N,ncol=18)
-  tvaluematrix=matrix(0,nrow=1,ncol=18)
-  colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51',
-                        'beta12','beta22','beta32','beta42',
-                        'D11','D22','D12','rho1','rho2',
-                        'lambda','sigma','alpha')
-  colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51',
-                         'gbeta12','gbeta22','gbeta32','gbeta42',
-                         'gD11','gD22','gD12','grho1','grho2',
-                         'glambda','gsigma','galpha')
-  colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51',
-                             'ssdbeta12','ssdbeta22','ssdbeta32','ssdbeta42',
-                             'ssdD11','ssdD22','ssdD12','ssdrho1','ssdrho2',
-                             'ssdlambda','ssdsigma','ssdalpha')
-  colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51',
-                       'sdbeta12','sdbeta22','sdbeta32','sdbeta42',
-                       'sdD11','sdD22','sdD12','sdrho1','sdrho2',
-                       'sdlambda','sdsigma','sdalpha')
-  colnames(biasmatrix)=c('bbeta01','bbeta11','bbeta21','bbeta31','bbeta41','bbeta51',
-                         'bbeta12','bbeta22','bbeta32','bbeta42',
-                         'bD11','bD22','bD12','brho1','brho2',
-                         'blambda','bsigma','balpha')
-  colnames(tvaluematrix)=c('tbeta01','tbeta11','tbeta21','tbeta31','tbeta41','tbeta51',
-                           'tbeta12','tbeta22','tbeta32','tbeta42',
-                           'tD11','tD22','tD12','trho1','trho2',
-                           'tlambda','tsigma','talpha')
-  i=0
-  k=1
+  paranum=length(truepara)
+  gradmatrix=matrix(0,nrow=N,ncol=paranum)
+  estmatrix=matrix(0,nrow=N,ncol=paranum)
+  samplestmatrix=matrix(0,nrow=1,ncol=paranum)
+  sdmatrix=matrix(0,nrow=N,ncol=paranum)
+  ECPmatrix=matrix(0,nrow=N,ncol=paranum)
+  CPmatrix=matrix(0,nrow=N,ncol=paranum)
+  RMSEmatrix=matrix(0,nrow=1,ncol=paranum)
+  if(paranum==18)
+  {
+    colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51','beta12','beta22',
+                          'beta32','beta42','D11','D22','D12','rho1','rho2','lambda','sigma','alpha')
+    colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51','gbeta12','gbeta22',
+                           'gbeta32','gbeta42','gD11','gD22','gD12','grho1','grho2','glambda','gsigma','galpha')
+    colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51','sdbeta12','sdbeta22',
+                         'sdbeta32','sdbeta42','sdD11','sdD22','sdD12','sdrho1','sdrho2','sdlambda','sdsigma','sdalpha')
+    colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51','ssdbeta12','ssdbeta22',
+                        'ssdbeta32','ssdbeta42','ssdD11','ssdD22','ssdD12','ssdrho1','ssdrho2','ssdlambda','ssdsigma','ssdalpha')
+    colnames(ECPmatrix)=c('ecpbeta01','ecpbeta11','ecpbeta21','ecpbeta31','ecpbeta41','ecpbeta51','ecpbeta12','ecpbeta22',
+                        'ecpbeta32','ecpbeta42','ecpD11','ecpD22','ecpD12','ecprho1','ecprho2','ecplambda','ecpsigma','ecpalpha')
+    colnames(CPmatrix)=c('cpbeta01','cpbeta11','cpbeta21','cpbeta31','cpbeta41','cpbeta51','cpbeta12','cpbeta22',
+                         'cpbeta32','cpbeta42','cpD11','cpD22','cpD12','cprho1','cprho2','cplambda','cpsigma','cpalpha')
+    colnames(RMSEmatrix)=c('rmbeta01','rmbeta11','rmbeta21','rmbeta31','rmbeta41','rmbeta51','rmbeta12','rmbeta22',
+                           'rmbeta32','rmbeta42','rmD11','rmD22','rmD12','rmrho1','rmrho2','rmlambda','rmsigma','rmalpha')
+  }
+  if(paranum==17)
+  {
+    colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51','beta12','beta22',
+                          'beta32','beta42','D11','D22','D12','rho2','lambda','sigma','alpha')
+    colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51','gbeta12','gbeta22',
+                           'gbeta32','gbeta42','gD11','gD22','gD12','grho2','glambda','gsigma','galpha')
+    colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51','ssdbeta12','ssdbeta22',
+                          'ssdbeta32','ssdbeta42','ssdD11','ssdD22','ssdD12','ssdrho2','ssdlambda','ssdsigma','ssdalpha')
+    colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51','sdbeta12','sdbeta22',
+                         'sdbeta32','sdbeta42','sdD11','sdD22','sdD12','sdrho2','sdlambda','sdsigma','sdalpha')
+    colnames(ECPmatrix)=c('ecpbeta01','ecpbeta11','ecpbeta21','ecpbeta31','ecpbeta41','ecpbeta51','ecpbeta12','ecpbeta22',
+                          'ecpbeta32','ecpbeta42','ecpD11','ecpD22','ecpD12','ecprho2','ecplambda','ecpsigma','ecpalpha')
+    colnames(CPmatrix)=c('cpbeta01','cpbeta11','cpbeta21','cpbeta31','cpbeta41','cpbeta51','cpbeta12','cpbeta22',
+                         'cpbeta32','cpbeta42','cpD11','cpD22','cpD12','cprho2','cplambda','cpsigma','cpalpha')
+    colnames(RMSEmatrix)=c('rmbeta01','rmbeta11','rmbeta21','rmbeta31','rmbeta41','rmbeta51','rmbeta12','rmbeta22',
+                           'rmbeta32','rmbeta42','rmD11','rmD22','rmD12','rmrho2','rmlambda','rmsigma','rmalpha')
+  }
+  if(paranum==16)
+  {
+    colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51','beta12','beta22',
+                          'beta32','beta42','D11','D22','D12','lambda','sigma','alpha')
+    colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51','gbeta12','gbeta22',
+                           'gbeta32','gbeta42','gD11','gD22','gD12','glambda','gsigma','galpha')
+    colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51','ssdbeta12','ssdbeta22',
+                            'ssdbeta32','ssdbeta42','ssdD11','ssdD22','ssdD12','ssdlambda','ssdsigma','ssdalpha')
+    colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51','sdbeta12','sdbeta22',
+                         'sdbeta32','sdbeta42','sdD11','sdD22','sdD12','sdlambda','sdsigma','sdalpha')
+    colnames(ECPmatrix)=c('ecpbeta01','ecpbeta11','ecpbeta21','ecpbeta31','ecpbeta41','ecpbeta51','ecpbeta12','ecpbeta22',
+                          'ecpbeta32','ecpbeta42','ecpD11','ecpD22','ecpD12','ecplambda','ecpsigma','ecpalpha')
+    colnames(CPmatrix)=c('cpbeta01','cpbeta11','cpbeta21','cpbeta31','cpbeta41','cpbeta51','cpbeta12','cpbeta22',
+                         'cpbeta32','cpbeta42','cpD11','cpD22','cpD12','cplambda','cpsigma','cpalpha')
+    colnames(RMSEmatrix)=c('rmbeta01','rmbeta11','rmbeta21','rmbeta31','rmbeta41','rmbeta51','rmbeta12','rmbeta22',
+                           'rmbeta32','rmbeta42','rmD11','rmD22','rmD12','rmlambda','rmsigma','rmalpha')
+  }
+  i=0;k=1;logliki=0;datasetid=NULL;iter=0
   while(k<=N)
   {
     i=i+1
-    estGHOb=nlm(f=applogli,p=c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],rho1,rho2,lambda,
-                               sigma,unique(alpha)),data=Jointdata[[i]],surlmmcor=surlmmcor,lmmcor=lmmcor,m=m, hessian=T,iterlim=1000)
+    if(paranum==18) estGHOb=nlm(f=applogli,p=initpara,data=Jointdata[[i]],surlmmcor=surlmmcor,lmmcor=lmmcor,m=m,hessian=T,iterlim=1000)
+    if(paranum==17) estGHOb=nlm(f=applogli,p=initpara,data=Jointdata[[i]],lmmcor=lmmcor,m=m,hessian=T,iterlim=1000)
+    if(paranum==16) estGHOb=nlm(f=applogli,p=initpara,data=Jointdata[[i]],m=m,hessian=T,iterlim=1000)
     if(estGHOb$code==1)
     {
       estmatrix[k,]=estGHOb$estimate
       sdmatrix[k,]=sqrt(diag(solve(estGHOb$hessian)))
       gradmatrix[k,]=estGHOb$gradient
-      biasmatrix[k,]=estmatrix[k,]-c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],
-                                     rho1,rho2,lambda,sigma,unique(alpha))
+      logliki[k]=-estGHOb$minimum
+      iter[k]=estGHOb$iterations
+      print(c(i,k,iter[k]))
+      datasetid=c(datasetid,i)
       k=k+1
     }
   }
   samplestmatrix[1,]=apply(estmatrix, 2, sd)
-  tvaluematrix[1,]=colMeans(biasmatrix)/samplestmatrix[1,]
-  results=list(gradmatrix,estmatrix,sdmatrix,colMeans(estmatrix),colMeans(biasmatrix),samplestmatrix,tvaluematrix,i)
-  return(results)
-}
-
-
-#Estimated parameters from the proposed joint model with R_ty=0 and R_y=I. This is equivalent to a conventional joint model 
-#assuming conditional independence.
-Y.lmmsurcondicopulajoineRGHObuncorest=function(beta1,beta2,sigma,var.random,lambda,alpha,N,m,Jointdata,applogli)
-{
-  gradmatrix=matrix(0,nrow=N,ncol=16)
-  estmatrix=matrix(0,nrow=N,ncol=16)
-  samplestmatrix=matrix(0,nrow=1,ncol=16)
-  sdmatrix=matrix(0,nrow=N,ncol=16)
-  biasmatrix=matrix(0,nrow=N,ncol=16)
-  tvaluematrix=matrix(0,nrow=1,ncol=16)
-  colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51',
-                        'beta12','beta22','beta32','beta42',
-                        'D11','D22','D12',
-                        'lambda','sigma','alpha')
-  colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51',
-                         'gbeta12','gbeta22','gbeta32','gbeta42',
-                         'gD11','gD22','gD12',
-                         'glambda','gsigma','galpha')
-  colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51',
-                             'ssdbeta12','ssdbeta22','ssdbeta32','ssdbeta42',
-                             'ssdD11','ssdD22','ssdD12',
-                             'ssdlambda','ssdsigma','ssdalpha')
-  colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51',
-                       'sdbeta12','sdbeta22','sdbeta32','sdbeta42',
-                       'sdD11','sdD22','sdD12',
-                       'sdlambda','sdsigma','sdalpha')
-  colnames(biasmatrix)=c('bbeta01','bbeta11','bbeta21','bbeta31','bbeta41','bbeta51',
-                         'bbeta12','bbeta22','bbeta32','bbeta42',
-                         'bD11','bD22','bD12',
-                         'blambda','bsigma','balpha')
-  colnames(tvaluematrix)=c('tbeta01','tbeta11','tbeta21','tbeta31','tbeta41','tbeta51',
-                           'tbeta12','tbeta22','tbeta32','tbeta42',
-                           'tD11','tD22','tD12',
-                           'tlambda','tsigma','talpha')
-  i=0
-  k=1
-  while(k<=N)
+  RMSEmatrix[1,]=colMeans((estmatrix-matrix(rep(truepara,N),nrow=N,byrow=T))^2)^{0.5}
+  eupmatrix=estmatrix+matrix(rep(qnorm(0.975)*samplestmatrix,N),nrow=N,byrow=T)
+  elowmatrix=estmatrix-matrix(rep(qnorm(0.975)*samplestmatrix,N),nrow=N,byrow=T)
+  upmatrix=estmatrix+qnorm(0.975)*sdmatrix
+  lowmatrix=estmatrix-qnorm(0.975)*sdmatrix
+  for(j in 1:N)
   {
-    i=i+1
-    estGHOb=nlm(f=applogli,p=c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],lambda,
-                               sigma,unique(alpha)),data=Jointdata[[i]],m=m, hessian=T,iterlim=1000)
-    if(estGHOb$code==1)
-    {
-      estmatrix[k,]=estGHOb$estimate
-      sdmatrix[k,]=sqrt(diag(solve(estGHOb$hessian)))
-      gradmatrix[k,]=estGHOb$gradient
-      biasmatrix[k,]=estmatrix[k,]-c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],
-                                     lambda,sigma,unique(alpha))
-      k=k+1
-    }
+    ECPmatrix[j,]=as.numeric(elowmatrix[j,]<truepara&truepara<eupmatrix[j,])
+    CPmatrix[j,]=as.numeric(lowmatrix[j,]<truepara&truepara<upmatrix[j,])
   }
-  samplestmatrix[1,]=apply(estmatrix, 2, sd)
-  tvaluematrix[1,]=colMeans(biasmatrix)/samplestmatrix[1,]
-  results=list(gradmatrix,estmatrix,sdmatrix,colMeans(estmatrix),colMeans(biasmatrix),samplestmatrix,tvaluematrix,i)
+  results=list(gradmatrix,estmatrix,sdmatrix,colMeans(estmatrix),colMeans(sdmatrix),samplestmatrix,
+               RMSEmatrix,colMeans(ECPmatrix),colMeans(CPmatrix),logliki,datasetid,iter)
   return(results)
 }
 
 
-#Estimated parameters from the proposed joint model with R_ty=0 but R_y not equal to I. 
-#This is model assuming conditional independence between the two sub-models but not within the longitudinal process.
-Y.lmmsurcondicopulajoineRGHObLongest=function(beta1,beta2,sigma,var.random,lambda,alpha,rho2,N,m,Jointdata,applogli,lmmcor)
+
+#Dynamic prediction for survival probabilities
+#posterior distribution of random effects f(bi|ti,yi)
+fbipos=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,bi,m,surlmmcor,lmmcor)
 {
-  gradmatrix=matrix(0,nrow=N,ncol=17)
-  estmatrix=matrix(0,nrow=N,ncol=17)
-  samplestmatrix=matrix(0,nrow=1,ncol=17)
-  sdmatrix=matrix(0,nrow=N,ncol=17)
-  biasmatrix=matrix(0,nrow=N,ncol=17)
-  tvaluematrix=matrix(0,nrow=1,ncol=17)
-  colnames(estmatrix)=c('beta01','beta11','beta21','beta31','beta41','beta51',
-                        'beta12','beta22','beta32','beta42',
-                        'D11','D22','D12','rho2',
-                        'lambda','sigma','alpha')
-  colnames(gradmatrix)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51',
-                         'gbeta12','gbeta22','gbeta32','gbeta42',
-                         'gD11','gD22','gD12','grho2',
-                         'glambda','gsigma','galpha')
-  colnames(samplestmatrix)=c('ssdbeta01','ssdbeta11','ssdbeta21','ssdbeta31','ssdbeta41','ssdbeta51',
-                             'ssdbeta12','ssdbeta22','ssdbeta32','ssdbeta42',
-                             'ssdD11','ssdD22','ssdD12','ssdrho2',
-                             'ssdlambda','ssdsigma','ssdalpha')
-  colnames(sdmatrix)=c('sdbeta01','sdbeta11','sdbeta21','sdbeta31','sdbeta41','sdbeta51',
-                       'sdbeta12','sdbeta22','sdbeta32','sdbeta42',
-                       'sdD11','sdD22','sdD12','sdrho2',
-                       'sdlambda','sdsigma','sdalpha')
-  colnames(biasmatrix)=c('bbeta01','bbeta11','bbeta21','bbeta31','bbeta41','bbeta51',
-                         'bbeta12','bbeta22','bbeta32','bbeta42',
-                         'bD11','bD22','bD12','brho2',
-                         'blambda','bsigma','balpha')
-  colnames(tvaluematrix)=c('tbeta01','tbeta11','tbeta21','tbeta31','tbeta41','tbeta51',
-                           'tbeta12','tbeta22','tbeta32','tbeta42',
-                           'tD11','tD22','tD12','trho2',
-                           'tlambda','tsigma','talpha')
-  i=0
-  k=1
-  while(k<=N)
-  {
-    i=i+1
-    estGHOb=nlm(f=applogli,p=c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],rho2,lambda,
-                               sigma,unique(alpha)),data=Jointdata[[i]],lmmcor=lmmcor,m=m, hessian=T,iterlim=1000)
-    if(estGHOb$code==1)
-    {
-      estmatrix[k,]=estGHOb$estimate
-      sdmatrix[k,]=sqrt(diag(solve(estGHOb$hessian)))
-      gradmatrix[k,]=estGHOb$gradient
-      biasmatrix[k,]=estmatrix[k,]-c(beta1,beta2,c(var.random)[1],c(var.random)[4],c(var.random)[2],rho2,
-                                     lambda,sigma,unique(alpha))
-      k=k+1
+  timepoint=data$ti
+  ni=length(timepoint)
+  if(surlmmcor=="ex") R21=rep(rho1,ni)
+  if(surlmmcor=="car") R21=rho1^(10-timepoint+1)
+  R12=t(R21)
+  R11=1
+  if(lmmcor=="car") R22=car1(timepoint,rho2)
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,ni)),(ni-1)),1),ncol=ni)
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  Sigma=diag(c(1,rep(sigma,ni)))%*%R%*%diag(c(1,rep(sigma,ni)))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  Xi1=matrix(c(rep(1,ni),timepoint,data$treat,data$gender,as.numeric(data$age==1),as.numeric(data$age==2)),ncol=6)
+  Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+  Xi2=c(unique(data$treat),unique(data$gender),unique(as.numeric(data$age==1)),unique(as.numeric(data$age==2)))
+  obsti=unique(data$obsti)
+    if(dynati<obsti|obsti==10) {indi=0
+    t=min(dynati,obsti)} else {indi=1
+    t=obsti}
+    dimyi=sum(timepoint<=t)
+    Sigmayi=Sigma[-1,-1][1:dimyi,1:dimyi]
+    V11=matrix(Zi1[1:dimyi,],ncol=2)%*%D%*%t(matrix(Zi1[1:dimyi,],ncol=2))+Sigmayi
+    V22=D
+    V12=matrix(Zi1[1:dimyi,],ncol=2)%*%D
+    V21=t(V12)
+    mubicon=V21%*%solve(V11)%*%(data$resp-Xi1%*%beta1)[1:dimyi]
+    Sigmabicon=V22-V21%*%solve(V11)%*%V12
+    Ci=lambda*exp(c(Xi2%*%beta2)+alpha*bi[1])
+    hi=Ci*exp(alpha*bi[2]*t)
+    if(alpha==0) {
+      Si=exp(-Ci*t)
+      } else { 
+     Si=exp(-Ci/(alpha*bi[2])*(exp(alpha*bi[2]*t)-1))
+     }
+    fi=hi*Si
+    Zyi=(data$resp-Xi1%*%beta1-Zi1%*%bi)[1:dimyi,]
+    muticon=as.numeric(t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Zyi)
+    sigmaticon=as.numeric(sqrt(1-t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Sigma[1,-1][1:dimyi]))
+    fticon=indi*dnorm(-qnorm(Si),muticon,sigmaticon)*fi/dnorm(-qnorm(Si))+(1-indi)*(pnorm((qnorm(Si)+muticon)/sigmaticon))
+    postijcondimean=0
+    roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+    roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+    bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+    wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+    Cij=lambda*exp(c(Xi2%*%beta2)+alpha*bij[1,])
+    hij=Cij*exp(alpha*bij[2,]*t)
+    if(alpha==0) {
+      Sij=exp(-Cij*t)
+    }  else {  
+    Sij=exp(-Cij/(alpha*bij[2,])*(exp(alpha*bij[2,]*t)-1))
     }
-  }
-  samplestmatrix[1,]=apply(estmatrix, 2, sd)
-  tvaluematrix[1,]=colMeans(biasmatrix)/samplestmatrix[1,]
-  results=list(gradmatrix,estmatrix,sdmatrix,colMeans(estmatrix),colMeans(biasmatrix),samplestmatrix,tvaluematrix,i)
+    fij=hij*Sij
+    Zyij=(matrix(rep(data$resp,length(bij[1,])),ncol=length(bij[1,]))-
+            matrix(rep(Xi1%*%beta1,length(bij[1,])),ncol=length(bij[1,]))-Zi1%*%bij)[1:dimyi,]
+    mutijcon=t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Zyij
+    sigmatijcon=sqrt(1-t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Sigma[1,-1][1:dimyi])
+    ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
+      (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
+    postijcondimean=sum(ftijcon*wij)
+    fbicon=fticon*dmvnorm(bi,c(mubicon),Sigmabicon)/postijcondimean
+    return(fbicon)
+}
+
+#maximise f(bi|ti,yi) to obtain hat^{bi}
+dynabi=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,m,surlmmcor,lmmcor)
+{
+  timepoint=data$ti
+  ni=length(timepoint)
+  if(surlmmcor=="ex") R21=rep(rho1,ni)
+  if(surlmmcor=="car") R21=rho1^(10-timepoint+1)
+  R12=t(R21)
+  R11=1
+  if(lmmcor=="car") R22=car1(timepoint,rho2)
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,ni)),(ni-1)),1),ncol=ni)
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  Sigma=diag(c(1,rep(sigma,ni)))%*%R%*%diag(c(1,rep(sigma,ni)))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Xi1=matrix(c(rep(1,ni),timepoint,data$treat,
+               data$gender,as.numeric(data$age==1),
+               as.numeric(data$age==2)),ncol=6)
+  Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+  Xi2=c(unique(data$treat),unique(data$gender),unique(as.numeric(data$age==1)),unique(as.numeric(data$age==2)))
+  obsti=unique(data$obsti)
+  if(dynati<obsti|obsti==10) {indi=0
+  t=min(dynati,obsti)} else {indi=1
+  t=obsti}
+  dimyi=sum(timepoint<=t)
+  Sigmayi=Sigma[-1,-1][1:dimyi,1:dimyi]
+  V11=matrix(Zi1[1:dimyi,],ncol=2)%*%D%*%t(matrix(Zi1[1:dimyi,],ncol=2))+Sigmayi
+  V22=D
+  V12=matrix(Zi1[1:dimyi,],ncol=2)%*%D
+  V21=t(V12)
+  mubicon=V21%*%solve(V11)%*%(data$resp-Xi1%*%beta1)[1:dimyi]
+  bihat=optim(fbipos,par=c(mubicon),beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,
+              rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,alpha=alpha,data=data,dynati=dynati,m=m,
+              surlmmcor=surlmmcor,lmmcor=lmmcor,hessian=T, control=list(fnscale=-1,maxit=20000))$par
+  results=list(bihat,mubicon)
   return(results)
 }
 
 
+#predict survival probabilities
+predSurcop=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,predinterv,m,surlmmcor,lmmcor)
+{
+  timepoint=data$ti
+  ni=length(timepoint)
+  if(surlmmcor=="ex") R21=rep(rho1,ni)
+  if(surlmmcor=="car") R21=rho1^(10-timepoint+1)
+  R12=t(R21)
+  R11=1
+  if(lmmcor=="car") R22=car1(timepoint,rho2)
+  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,ni)),(ni-1)),1),ncol=ni)
+  R=rbind(cbind(R11,R12),cbind(R21,R22))
+  Sigma=diag(c(1,rep(sigma,ni)))%*%R%*%diag(c(1,rep(sigma,ni)))
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Xi1=matrix(c(rep(1,ni),timepoint,data$treat,
+               data$gender,as.numeric(data$age==1),
+               as.numeric(data$age==2)),ncol=6)
+  Zi1=matrix(c(rep(1,ni),timepoint),ncol=2)
+  Xi2=c(unique(data$treat),unique(data$gender),unique(as.numeric(data$age==1)),unique(as.numeric(data$age==2)))
+  if(dynati>=unique(data$obsti))  
+  {
+    t=seq(unique(data$obsti),predinterv,by=0.05)
+    dimyi=sum(timepoint<=unique(data$obsti))
+  }
+  if(dynati<unique(data$obsti))  
+  {
+    t=seq(dynati,predinterv,by=0.05)
+    dimyi=sum(timepoint<=dynati)
+  }
+  Sigmayi=Sigma[-1,-1][1:dimyi,1:dimyi]
+  hatbi=dynabi(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,
+               alpha=alpha,data=data,dynati=dynati,m=m,surlmmcor=surlmmcor,lmmcor=lmmcor)[[1]]
+  Ci=lambda*exp(c(Xi2%*%beta2)+alpha*hatbi[1])
+  Si=exp(-Ci/(alpha*hatbi[2])*(exp(alpha*hatbi[2]*t)-1))
+  Zyi=c(data$resp-Xi1%*%beta1-Zi1%*%hatbi)[1:dimyi]
+  muticon=as.numeric(t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Zyi)
+  sigmaticon=as.numeric(sqrt(1-t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Sigma[1,-1][1:dimyi]))
+  predi=pnorm((qnorm(Si)+muticon)/sigmaticon)/pnorm((qnorm(Si[1])+muticon)/sigmaticon)
+  results=list(t,Si/Si[1],predi,dimyi,hatbi)
+  return(results)
+}
 
+#predict longitudinal trajectory
+fitLong=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,m,surlmmcor,lmmcor)
+{
+  timepoint=data$ti
+  if(dynati>=unique(data$obsti))  
+  {
+    t=seq(0,unique(data$obsti),by=0.05)
+    dimyi=sum(timepoint<=unique(data$obsti))
+  }
+  if(dynati<unique(data$obsti))  
+  {
+    t=seq(0,dynati,by=0.05)
+    dimyi=sum(timepoint<=dynati)
+  }
+  hatbi=dynabi(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,
+               rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,alpha=alpha,data=data,dynati=dynati,m=m,
+               surlmmcor=surlmmcor,lmmcor=lmmcor)[[1]]
+  Xi1new=matrix(c(rep(1,length(t)),t,rep(unique(data$treat),length(t)),
+                  rep(unique(data$gender),length(t)),rep(unique(as.numeric(data$age==1)),length(t)),
+                  rep(unique(as.numeric(data$age==2)),length(t))),ncol=6)
+  Zi1new=matrix(c(rep(1,length(t)),t),ncol=2)
+  fityi=c(Xi1new%*%beta1+Zi1new%*%hatbi)
+  results=list(t,fityi,timepoint[1:dimyi],hatbi)
+  return(results)
+}
+
+#calculate AUC and PE for censored data
+
+#function for providing some imputs for "dynaAUC.cen" and "dynaPE.cen" functions later.
+dynasurgroup.cen=function(Data,beta1,beta2,D11,D22,D12,etapar,lambda,sigma,alpha,etaord,dynati,predinterv,m,
+                          tmax,copula,nu)
+{
+  allprob=0
+  j=0
+  i=1
+  ind=0
+  obst=0
+  for(i in unique(Data$subj))
+  {
+    Datai=Data[Data$subj==i,]
+    obsti=unique(Datai$obsti)
+    indi=unique(Datai$indicator)
+    if(obsti>dynati)
+    {
+      j=j+1
+      allprob[j]=predSurcop(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,
+                                  alpha=alpha,data=Datai,dynati=dynati,predinterv=predinterv,m=m,acc=predinterv-dynati,
+                                  surlmmcor=surlmmcor,lmmcor=lmmcor)[[3]][-1]
+      ind[j]=indi;obst[j]=obsti
+    }
+  }
+  results=list(j,allprob,ind,obst)
+  return(results)
+}
+
+#function for calculate AUC
+dynaAUC.cen=function(probs,ind,obst,dynati,predinterv)
+{
+  upcount=0;lowcount=0
+  for(i in 1:length(probs))
+  {
+    if(obst[i]<=predinterv&obst[i]>dynati&ind[i]==1)
+    {
+      upcount=sum((obst>predinterv)*(probs[i]<probs))+sum((obst>obst[i]&obst<=predinterv&ind==0)*(probs[i]<probs)*probs)+
+        upcount
+      lowcount=sum(obst>predinterv)+sum((obst>obst[i]&obst<=predinterv&ind==0)*probs)+lowcount
+    }
+    if(obst[i]<=predinterv&obst[i]>dynati&ind[i]==0)
+    {
+      upcount=sum((obst>predinterv)*(probs[i]<probs)*(1-probs[i]))+
+        sum((obst>obst[i]&obst<=predinterv&ind==0)*(probs[i]<probs)*(1-probs[i])*probs)+upcount
+      lowcount=sum((obst>predinterv)*(1-probs[i]))+sum((obst>obst[i]&obst<=predinterv&ind==0)*(1-probs[i])*probs)+
+        lowcount
+    }
+  }
+  return(upcount/lowcount)
+}
+
+#function for calculate PE
+dynaPE.cen=function(probs,ind,obst,dynati,predinterv)
+{
+     upcount=sum((obst>predinterv)*(1-probs)^2+ind*(obst<predinterv)*(0-probs)^2+(1-ind)*(obst<predinterv)*
+                   (probs*(1-probs)^2+(1-probs)*(0-probs)^2))
+    lowcount=sum(obst>dynati)
+  return(upcount/lowcount)
+}
