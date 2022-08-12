@@ -17,41 +17,48 @@ library("rgl")
 
 
 #function for generating Gaussian hermite nodes and their corresponding weights
-GaussianHermite <- function(r){
-  esp <- 3.0e-14
-  pim4 <- 1/sqrt(sqrt(pi)) 	
-  maxit <- 1000
-  x <- w <- rep(0,r) 
-  m <- (r+1 - ((r+1)%%2))/2
-  p <- 2*r
-  q <- 2*r+1
+GaussianHermite=function(r)
+{
+  esp=3.0e-14
+  pim4=1/sqrt(sqrt(pi)) 	
+  maxit=1000
+  x=w=rep(0,r) 
+  m=(r+1-((r+1)%%2))/2
+  p=2*r
+  q=2*r+1
   for(i in 1:m){
-    if(i==1) z <- sqrt(q) -1.85575*q^(-.1667)
-    if(i==2) z <- z-1.14^((.425)/z)
-    if(i==3) z <- 1.86*z - 0.86*x[1]
-    if(i==4) z <- 1.91*z - 0.91*x[2]
-    if(i!=1 & i!=2 & i!=3 & i!=4)  z <- 2*z - x[i-2]
-    its <- 1
-    dif <- 1
+    if(i==1) z=sqrt(q)-1.85575*q^(-0.1667)
+    if(i==2) z=z-1.14^((.425)/z)
+    if(i==3) z=1.86*z-0.86*x[1]
+    if(i==4) z=1.91*z-0.91*x[2]
+    if(i!=1 & i!=2 & i!=3 & i!=4)  z=2*z-x[i-2]
+    its=1
+    dif=1
     while(its<maxit & dif>esp){
-      p1 <- pim4
-      p2 <- 0
+      p1=pim4
+      p2=0
       for(j in 1:r){
-        p3 <- p2
-        p2 <- p1
-        p1 <- z*sqrt(2/j)*p2 - sqrt((j-1)/j)*p3
+        p3=p2
+        p2=p1
+        p1=z*sqrt(2/j)*p2-sqrt((j-1)/j)*p3
       }
-      pp <- sqrt(p)*p2
-      z <- z - p1/pp
-      dif <- abs(p1/pp)
-      its <- its +1
+      pp=sqrt(p)*p2
+      z=z-p1/pp
+      dif=abs(p1/pp)
+      its=its+1
     }
-    x[i] <- z
-    x[r+1-i] <- -z
-    w[i] <- 2/(pp^2)
-    w[r+1-i] <- w[i]
+    x[i]=z
+    x[r+1-i]=-z
+    w[i]=2/(pp^2)
+    w[r+1-i]=w[i]
   }
   return(list(round(w,15),round(x,15)))
+}
+
+car1=function(timepoint, rho) {                #continuous AR1 function
+  exponent=abs(matrix(timepoint, nrow =length(timepoint), ncol =length(timepoint), byrow = TRUE) - 
+                    (timepoint))
+  rho^exponent
 }
 
 
@@ -80,8 +87,8 @@ aidsfit <- joint(data = aids.jd1,
                  model = "intslope",sepassoc=F)
 summary(aidsfit)
 
-#log-likelihood function for joint model assuming constant correlation between the two sub-models
-loglikecondicopulaCD4.7ba=function(theta,data,lmmcor,m)
+#log-likelihood function for joint model with Gaussian copula with different correlation structure
+loglikeMvGauCD4=function(theta,data,surlmmcor,lmmcor,m,nlam)
 {
   beta1=theta[1:6]
   beta2=theta[7:10]
@@ -90,22 +97,16 @@ loglikecondicopulaCD4.7ba=function(theta,data,lmmcor,m)
   D12=theta[13]
   rho1=theta[14]
   rho2=theta[15]
-  lambda=theta[16:22]
-  sigma=theta[23]
-  alpha=theta[24]
+  lambda=theta[16:(15+nlam)]
+  sigma=theta[16+nlam]
+  alpha=theta[17+nlam]
   R11=1
-  R21=rep(rho1,5)
+  if(surlmmcor=="ex") R21=rep(rho1,5)
+  if(surlmmcor=="sq") R21=c(rho1^16,rho1^8,rho1^4,rho1^2,rho1)
+  if(surlmmcor=="ar") R21=c(rho1^5,rho1^4,rho1^3,rho1^2,rho1)
   R12=t(R21)
-  if(lmmcor=="ar") R22=matrix(c(1,rho2,rho2^2,rho2^3,rho2^4,
-                                rho2,1,rho2,rho2^2,rho2^3,
-                                rho2^2,rho2,1,rho2,rho2^2,
-                                rho2^3,rho2^2,rho2,1,rho2,
-                                rho2^4,rho2^3,rho2^2,rho2,1),ncol=5)
-  if(lmmcor=="car") R22=matrix(c(1,rho2^2,rho2^6,rho2^12,rho2^18,
-                                 rho2^2,1,rho2^4,rho2^10,rho2^16,
-                                 rho2^6,rho2^4,1,rho2^6,rho2^12,
-                                 rho2^12,rho2^10,rho2^6,1,rho2^6,
-                                 rho2^18,rho2^16,rho2^12,rho2^6,1),ncol=5)
+  if(lmmcor=="ar") R22=AR1(5,rho2)
+  if(lmmcor=="car") R22=car1(c(0,2,6,12,18),rho2)
   if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,5)),4),1),ncol=5)
   R=rbind(cbind(R11,R12),cbind(R21,R22))
   D=matrix(c(D11,D12,D12,D22),ncol=2)
@@ -116,7 +117,7 @@ loglikecondicopulaCD4.7ba=function(theta,data,lmmcor,m)
   w=GaussianHermite(m)[[1]]
   s=c(0,2,6,12,18)
   ll=-1.0e40
-  if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,7))==7&is.positive.definite(D)>0)
+  if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,nlam))==nlam&is.positive.definite(D)>0)
   {
     ll=0
     for(i in 1:n)
@@ -150,100 +151,8 @@ loglikecondicopulaCD4.7ba=function(theta,data,lmmcor,m)
       bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
       wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
       Cij=lambda%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
-      numbasi=sum(surti>seq(0,max(aids$Time),length=8))
-      nodei=c(seq(0,max(aids$Time),length=8)[1:numbasi],surti)
-      hij=Cij[numbasi,]*exp(alpha*bij[2,]*surti)
-      Sij=exp(colSums(-Cij[1:numbasi,]/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
-                (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
-      fij=hij*Sij
-      Zyij=(matrix(rep(data$CD4[data$patient==i],m^2),ncol=m^2)-
-              matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)
-      mutijcon=t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Zyij
-      sigmatijcon=sqrt(1-t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Sigmai[1,-1])
-      ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
-        (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
-      postijcondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
-      ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$CD4[data$patient==i]-Xi1%*%beta1))%*%
-               solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)+log(postijcondimean))
-    }
-  }
-  if(is.na(ll)) ll=-1.0e40
-  if(abs(ll)==Inf) ll=-1.0e40
-  return(-ll)
-}
-
-#log-likelihood function for a conventional joint model assuming conditional independence
-loglikecondicopulaCD4uncor.7ba=function(theta,data,lmmcor,m)
-{
-  beta1=theta[1:6]
-  beta2=theta[7:10]
-  D11=theta[11]
-  D22=theta[12]
-  D12=theta[13]
-  rho1=0
-  rho2=0
-  lambda=theta[14:20]
-  sigma=theta[21]
-  alpha=theta[22]
-  R11=1
-  R21=rep(rho1,5)
-  R12=t(R21)
-  if(lmmcor=="ar") R22=matrix(c(1,rho2,rho2^2,rho2^3,rho2^4,
-                                rho2,1,rho2,rho2^2,rho2^3,
-                                rho2^2,rho2,1,rho2,rho2^2,
-                                rho2^3,rho2^2,rho2,1,rho2,
-                                rho2^4,rho2^3,rho2^2,rho2,1),ncol=5)
-  if(lmmcor=="car") R22=matrix(c(1,rho2^2,rho2^6,rho2^12,rho2^18,
-                                 rho2^2,1,rho2^4,rho2^10,rho2^16,
-                                 rho2^6,rho2^4,1,rho2^6,rho2^12,
-                                 rho2^12,rho2^10,rho2^6,1,rho2^6,
-                                 rho2^18,rho2^16,rho2^12,rho2^6,1),ncol=5)
-  if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,5)),4),1),ncol=5)
-  R=rbind(cbind(R11,R12),cbind(R21,R22))
-  D=matrix(c(D11,D12,D12,D22),ncol=2)
-  Sigma=diag(c(1,rep(sigma,5)))%*%R%*%diag(c(1,rep(sigma,5)))
-  Sigmay=Sigma[-1,-1]
-  n=length(unique(data$patient))
-  a=GaussianHermite(m)[[2]]
-  w=GaussianHermite(m)[[1]]
-  s=c(0,2,6,12,18)
-  ll=-1.0e40
-  if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,7))==7&is.positive.definite(D)>0)
-  {
-    ll=0
-    for(i in 1:n)
-    {
-      Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
-                   data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
-                   (as.numeric(data$gender[data$patient==i])-1),
-                   (as.numeric(data$prevOI[data$patient==i])-1),
-                   (as.numeric(data$AZT[data$patient==i])-1)),ncol=6)
-      Xi2=c(unique(as.numeric(data$drug[data$patient==i])-1),
-            unique(as.numeric(data$gender[data$patient==i])-1),
-            unique(as.numeric(data$prevOI[data$patient==i])-1),
-            unique(as.numeric(data$AZT[data$patient==i])-1))
-      surti=unique(data$Time[data$patient==i])
-      indi=unique(data$death[data$patient==i])
-      obsti=data$obstime[data$patient==i]
-      posi=c(1,match(obsti,s)+1)
-      dimi=length(posi)
-      dimyi=dimi-1
-      Zi1=matrix(c(rep(1,5),s),ncol=2)[match(obsti,s),]
-      Sigmai=matrix(Sigma[posi,posi],ncol=dimi)
-      Sigmayi=matrix(Sigmai[-1,-1],ncol=dimyi)
-      V11=matrix(Zi1,ncol=2)%*%D%*%t(matrix(Zi1,ncol=2))+Sigmayi
-      V22=D
-      V12=matrix(Zi1,ncol=2)%*%D
-      V21=t(V12)
-      mubicon=V21%*%solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)
-      Sigmabicon=V22-V21%*%solve(V11)%*%V12
-      roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
-      roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
-      bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
-      wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
-      Cij=lambda%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
-      numbasi=sum(surti>seq(0,max(aids$Time),length=8))
-      nodei=c(seq(0,max(aids$Time),length=8)[1:numbasi],surti)
+      numbasi=sum(surti>seq(0,max(aids$Time),length=nlam+1))
+      nodei=c(seq(0,max(aids$Time),length=nlam+1)[1:numbasi],surti)
       hij=Cij[numbasi,]*exp(alpha*bij[2,]*surti)
       Sij=exp(colSums(-Cij[1:numbasi,]/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
                         (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
@@ -254,7 +163,75 @@ loglikecondicopulaCD4uncor.7ba=function(theta,data,lmmcor,m)
       sigmatijcon=sqrt(1-t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Sigmai[1,-1])
       ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
         (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
-      postijcondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
+      postijcondimean=sum(ftijcon*wij)     
+      ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$CD4[data$patient==i]-Xi1%*%beta1))%*%
+               solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)+log(postijcondimean))
+    }
+  }
+  if(is.na(ll)) ll=-1.0e40
+  if(abs(ll)==Inf) ll=-1.0e40
+  return(-ll)
+}
+
+
+#log-likelihood function for a conventional joint model assuming conditional independence
+loglikeMvGauCD4.uncor=function(theta,data,m,nlam)      #nlam is the number of piece-wise baselines 
+{
+  beta1=theta[1:6]
+  beta2=theta[7:10]
+  D11=theta[11]
+  D22=theta[12]
+  D12=theta[13]
+  lambda=theta[14:(13+nlam)]
+  sigma=theta[14+nlam]
+  alpha=theta[15+nlam]
+  D=matrix(c(D11,D12,D12,D22),ncol=2)
+  Sigmay=diag(rep(sigma,5))%*%diag(rep(sigma,5))
+  n=length(unique(data$patient))
+  a=GaussianHermite(m)[[2]]
+  w=GaussianHermite(m)[[1]]
+  s=c(0,2,6,12,18)
+  ll=-1.0e40
+  if(sigma>0&sum(lambda>rep(0,nlam))==nlam&is.positive.definite(D)>0)
+  {
+    ll=0
+    for(i in 1:n)
+    {
+      Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
+                   data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
+                   (as.numeric(data$gender[data$patient==i])-1),
+                   (as.numeric(data$prevOI[data$patient==i])-1),
+                   (as.numeric(data$AZT[data$patient==i])-1)),ncol=6)
+      Xi2=c(unique(as.numeric(data$drug[data$patient==i])-1),
+            unique(as.numeric(data$gender[data$patient==i])-1),
+            unique(as.numeric(data$prevOI[data$patient==i])-1),
+            unique(as.numeric(data$AZT[data$patient==i])-1))
+      surti=unique(data$Time[data$patient==i])
+      indi=unique(data$death[data$patient==i])
+      obsti=data$obstime[data$patient==i]
+      posyi=match(obsti,s)
+      dimyi=length(posyi)
+      Zi1=matrix(c(rep(1,5),s),ncol=2)[posyi,]
+      Sigmayi=matrix(Sigmay[posyi,posyi],ncol=dimyi)
+      V11=matrix(Zi1,ncol=2)%*%D%*%t(matrix(Zi1,ncol=2))+Sigmayi
+      V22=D
+      V12=matrix(Zi1,ncol=2)%*%D
+      V21=t(V12)
+      mubicon=V21%*%solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)
+      Sigmabicon=V22-V21%*%solve(V11)%*%V12
+      roti1=matrix(c(cos(pi/4),sin(pi/4),-sin(pi/4),cos(pi/4)),ncol=2)
+      roti=eigen(Sigmabicon)$vector%*%diag(sqrt(eigen(Sigmabicon)$value))%*%roti1
+      bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
+      wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
+      Cij=lambda%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
+      numbasi=sum(surti>seq(0,max(aids$Time),length=nlam+1))
+      nodei=c(seq(0,max(aids$Time),length=nlam+1)[1:numbasi],surti)
+      hij=Cij[numbasi,]*exp(alpha*bij[2,]*surti)
+      Sij=exp(colSums(-Cij[1:numbasi,]/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
+                        (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
+      fij=hij*Sij
+      ftijcon=indi*fij+(1-indi)*Sij
+      postijcondimean=sum(ftijcon*wij)     
       ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$CD4[data$patient==i]-Xi1%*%beta1))%*%
                solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)+log(postijcondimean))
     }
@@ -266,43 +243,28 @@ loglikecondicopulaCD4uncor.7ba=function(theta,data,lmmcor,m)
 
 #log-likelihood function for joint model assuming conditional independence between the two sub-models but the correlation within the longitudinal 
 #process is considered
-
-loglikecondicopulaCD4Suruncor.7ba=function(theta,data,lmmcor,m)
+loglikeMvGauCD4.Long=function(theta,data,lmmcor,m,nlam)
 {
   beta1=theta[1:6]
   beta2=theta[7:10]
   D11=theta[11]
   D22=theta[12]
   D12=theta[13]
-  rho1=0
   rho2=theta[14]
-  lambda=theta[15:21]
-  sigma=theta[22]
-  alpha=theta[23]
-  R11=1
-  R21=rep(rho1,5)
-  R12=t(R21)
-  if(lmmcor=="ar") R22=matrix(c(1,rho2,rho2^2,rho2^3,rho2^4,
-                                rho2,1,rho2,rho2^2,rho2^3,
-                                rho2^2,rho2,1,rho2,rho2^2,
-                                rho2^3,rho2^2,rho2,1,rho2,
-                                rho2^4,rho2^3,rho2^2,rho2,1),ncol=5)
-  if(lmmcor=="car") R22=matrix(c(1,rho2^2,rho2^6,rho2^12,rho2^18,
-                                 rho2^2,1,rho2^4,rho2^10,rho2^16,
-                                 rho2^6,rho2^4,1,rho2^6,rho2^12,
-                                 rho2^12,rho2^10,rho2^6,1,rho2^6,
-                                 rho2^18,rho2^16,rho2^12,rho2^6,1),ncol=5)
+  lambda=theta[15:(14+nlam)]
+  sigma=theta[15+nlam]
+  alpha=theta[16+nlam]
+  if(lmmcor=="ar") R22=AR1(5,rho2)
+  if(lmmcor=="car") R22=car1(c(0,2,6,12,18),rho2)
   if(lmmcor=="ex") R22=matrix(c(rep(c(1,rep(rho2,5)),4),1),ncol=5)
-  R=rbind(cbind(R11,R12),cbind(R21,R22))
   D=matrix(c(D11,D12,D12,D22),ncol=2)
-  Sigma=diag(c(1,rep(sigma,5)))%*%R%*%diag(c(1,rep(sigma,5)))
-  Sigmay=Sigma[-1,-1]
+  Sigmay=diag(rep(sigma,5))%*%R22%*%diag(rep(sigma,5))
   n=length(unique(data$patient))
   a=GaussianHermite(m)[[2]]
   w=GaussianHermite(m)[[1]]
   s=c(0,2,6,12,18)
   ll=-1.0e40
-  if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,7))==7&is.positive.definite(D)>0)
+  if(is.positive.definite(R22)>0&sigma>0&sum(lambda>rep(0,nlam))==nlam&is.positive.definite(D)>0)
   {
     ll=0
     for(i in 1:n)
@@ -319,12 +281,10 @@ loglikecondicopulaCD4Suruncor.7ba=function(theta,data,lmmcor,m)
       surti=unique(data$Time[data$patient==i])
       indi=unique(data$death[data$patient==i])
       obsti=data$obstime[data$patient==i]
-      posi=c(1,match(obsti,s)+1)
-      dimi=length(posi)
-      dimyi=dimi-1
-      Zi1=matrix(c(rep(1,5),s),ncol=2)[match(obsti,s),]
-      Sigmai=matrix(Sigma[posi,posi],ncol=dimi)
-      Sigmayi=matrix(Sigmai[-1,-1],ncol=dimyi)
+      posyi=match(obsti,s)
+      dimyi=length(posyi)
+      Zi1=matrix(c(rep(1,5),s),ncol=2)[posyi,]
+      Sigmayi=matrix(Sigmay[posyi,posyi],ncol=dimyi)
       V11=matrix(Zi1,ncol=2)%*%D%*%t(matrix(Zi1,ncol=2))+Sigmayi
       V22=D
       V12=matrix(Zi1,ncol=2)%*%D
@@ -336,19 +296,14 @@ loglikecondicopulaCD4Suruncor.7ba=function(theta,data,lmmcor,m)
       bij=sqrt(2)*roti%*%t(as.matrix(expand.grid(a,a)))+c(mubicon)
       wij=expand.grid(w,w)[,1]*expand.grid(w,w)[,2]/pi
       Cij=lambda%*%t(exp(c(Xi2%*%beta2)+alpha*bij[1,]))
-      numbasi=sum(surti>seq(0,max(aids$Time),length=8))
-      nodei=c(seq(0,max(aids$Time),length=8)[1:numbasi],surti)
+      numbasi=sum(surti>seq(0,max(aids$Time),length=nlam+1))
+      nodei=c(seq(0,max(aids$Time),length=nlam+1)[1:numbasi],surti)
       hij=Cij[numbasi,]*exp(alpha*bij[2,]*surti)
       Sij=exp(colSums(-Cij[1:numbasi,]/(matrix(rep(alpha*bij[2,],numbasi),byrow=T,nrow=numbasi))*
                         (exp(nodei[2:(numbasi+1)]%*%t(alpha*bij[2,]))-exp(nodei[1:numbasi]%*%t(alpha*bij[2,])))))
       fij=hij*Sij
-      Zyij=(matrix(rep(data$CD4[data$patient==i],m^2),ncol=m^2)-
-              matrix(rep(Xi1%*%beta1,m^2),ncol=m^2)-Zi1%*%bij)
-      mutijcon=t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Zyij
-      sigmatijcon=sqrt(1-t(Sigmai[1,-1])%*%solve(Sigmayi)%*%Sigmai[1,-1])
-      ftijcon=indi*dnorm(-qnorm(Sij),mutijcon,sigmatijcon)*fij/dnorm(-qnorm(Sij))+
-        (1-indi)*(pnorm((qnorm(Sij)+mutijcon)/c(sigmatijcon)))
-      postijcondimean=sum(ftijcon*wij)     #equivalent to denoij above except constant pi^{-p/2} weight
+      ftijcon=indi*fij+(1-indi)*Sij
+      postijcondimean=sum(ftijcon*wij)     
       ll=ll+(-dimyi/2*log(2*pi)-0.5*log(det(V11))-0.5*t((data$CD4[data$patient==i]-Xi1%*%beta1))%*%
                solve(V11)%*%(data$CD4[data$patient==i]-Xi1%*%beta1)+log(postijcondimean))
     }
@@ -357,6 +312,7 @@ loglikecondicopulaCD4Suruncor.7ba=function(theta,data,lmmcor,m)
   if(abs(ll)==Inf) ll=-1.0e40
   return(-ll)
 }
+
 
 #aids data dynamic prediction
 
@@ -490,7 +446,7 @@ cd4dynabi=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dyn
 
 
 #predict survival probabilities
-cd4predSurcop=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,predinterv,m,surlmmcor)
+cd4predSurcop=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dynati,predinterv,acc,m,surlmmcor)
 {
   timepoint=data$obstime
   ni=length(timepoint)
@@ -512,35 +468,26 @@ cd4predSurcop=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data
         unique(as.numeric(data$gender)-1),
         unique(as.numeric(data$prevOI)-1),
         unique(as.numeric(data$AZT)-1))
-  if(dynati>=unique(data$time))  
-  {
-    t=seq(unique(data$time),predinterv,by=0.05)
-    dimyi=sum(timepoint<=unique(data$time))
-  }
-  if(dynati<unique(data$time))  
-  {
-    t=seq(dynati,predinterv,by=0.05)
-    dimyi=sum(timepoint<=dynati)
-  }
-  Sigmayi=Sigma[-1,-1][1:dimyi,1:dimyi]
-  hatbi=cd4dynabi(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,
-                  surlmmcor=surlmmcor,alpha=alpha,data=data,dynati=dynati,m=m)[[1]]
+  t=seq(min(dynati,unique(data$time)),predinterv,by=acc)
+  dimyi=sum(timepoint<=min(dynati,unique(data$time)))
+  Sigmayi=as.matrix(Sigma[-1,-1])[1:dimyi,1:dimyi]
+  outbi=cd4dynabi(beta1=beta1,beta2=beta2,D11=D11,D22=D22,D12=D12,rho1=rho1,rho2=rho2,lambda=lambda,sigma=sigma,
+                  surlmmcor=surlmmcor,alpha=alpha,data=data,dynati=dynati,m=m)
+  hatbi=outbi[[1]];hatbiconyi=outbi[[2]]
   numbasi=0
   Si=0
   for(k in 1:length(t))
   { 
-  nodeik=0
-  Cik=0
-  numbasi[k]=sum(t[k]>seq(0,max(aids$time),length=8))
-  nodeik=c(seq(0,max(aids$time),length=8)[1:numbasi[k]],t[k])
-  Cik=lambda[1:numbasi[k]]*exp(c(Xi2%*%beta2)+alpha*hatbi[1])
-  Si[k]=exp(sum(-Cik/(alpha*hatbi[2])*(exp(nodeik[2:(numbasi[k]+1)]*alpha*hatbi[2])-exp(nodeik[1:numbasi[k]]*alpha*hatbi[2]))))
+    numbasi[k]=sum(t[k]>=seq(0,max(aids$time),length=8))
+    nodeik=c(seq(0,max(aids$time),length=8)[1:numbasi[k]],t[k])
+    Cik=lambda[1:numbasi[k]]*exp(c(Xi2%*%beta2)+alpha*hatbi[1])
+    Si[k]=exp(sum(-Cik/(alpha*hatbi[2])*(exp(nodeik[2:(numbasi[k]+1)]*alpha*hatbi[2])-exp(nodeik[1:numbasi[k]]*alpha*hatbi[2]))))
   }
   Zyi=c(data$CD4-Xi1%*%beta1-Zi1%*%hatbi)[1:dimyi]
   muticon=as.numeric(t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Zyi)
   sigmaticon=as.numeric(sqrt(1-t(Sigma[1,-1][1:dimyi])%*%solve(Sigmayi)%*%Sigma[1,-1][1:dimyi]))
   predi=pnorm((qnorm(Si)+muticon)/sigmaticon)/pnorm((qnorm(Si[1])+muticon)/sigmaticon)
-  results=list(t,Si/Si[1],predi,dimyi,hatbi)
+  results=list(t,Si/Si[1],predi,dimyi,hatbi,hatbiconyi)
   return(results)
 }
 
@@ -572,7 +519,6 @@ cd4fitLong=function(beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,data,dy
 
 
 #calculate AUC and PE for censored data
-
 #function for providing some imputs for "dynaAUC.cen" and "dynaPE.cen" functions later.
 cd4dynasurgroup.cen=function(Data,beta1,beta2,D11,D22,D12,rho1,rho2,lambda,sigma,alpha,dynati,predinterv,m,surlmmcor)
 {
@@ -625,5 +571,56 @@ dynaPE.cen=function(probs,ind,obst,dynati,predinterv)
                 (probs*(1-probs)^2+(1-probs)*(0-probs)^2))
   lowcount=sum(obst>dynati)
   return(upcount/lowcount)
+}
+
+
+#Conduct leave one out cross validation
+cd4.parest.leaveoneout=function(theta,surlmmcor,lmmcor,m,N)
+{
+  estmatrixuncor=NULL
+  estmatrixLong=NULL
+  estmatrixcor=NULL
+  gradmatrixuncor=NULL
+  gradmatrixLong=NULL
+  gradmatrixcor=NULL
+  loglikmatrix=NULL
+  codematrix=NULL
+  itermatrix=NULL
+  for(i in 1:N)
+  {
+    fitdata=aids[aids$id!=i,]
+    estGHObuncor=nlm(f=loglikecondicopulaCD4uncor.7ba,p=theta,data=fitdata,m=m,hessian=T,iterlim=2000)
+    estGHObLong=nlm(f=loglikecondicopulaCD4Long.7ba,p=c(theta[1:13],0,theta[14:22]),data=fitdata,m=m,hessian=T,iterlim=2000,
+                    lmmcor=lmmcor)
+    estGHObcor=nlm(f=loglikecondicopulaCD4cor.7ba,p=c(theta[1:13],0,0,theta[14:22]),data=fitdata,m=m,hessian=T,iterlim=2000,
+                   surlmmcor=surlmmcor,lmmcor=lmmcor)
+    estmatrixuncor=rbind(estmatrixuncor,estGHObuncor$estimate)
+    estmatrixLong=rbind(estmatrixLong,estGHObLong$estimate)
+    estmatrixcor=rbind(estmatrixcor,estGHObcor$estimate)
+    gradmatrixuncor=rbind(gradmatrixuncor,estGHObuncor$gradient)
+    gradmatrixLong=rbind(gradmatrixLong,estGHObLong$gradient)
+    gradmatrixcor=rbind(gradmatrixcor,estGHObcor$gradient)
+    loglikmatrix=rbind(loglikmatrix,c(-estGHObuncor$minimum,-estGHObLong$minimum,-estGHObcor$minimum))
+    codematrix=rbind(codematrix,c(estGHObuncor$code,estGHObLong$code,estGHObcor$code))
+    itermatrix=rbind(itermatrix,c(estGHObuncor$iter,estGHObLong$iter,estGHObcor$iter))
+    print(i)
+  }
+  colnames(gradmatrixuncor)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51','gbeta12','gbeta22',
+                              'gbeta32','gbeta42','gD11','gD22','gD12',rep('glambda',7),'gsigma','galpha')
+  colnames(estmatrixuncor)=c('beta01','beta11','beta21','beta31','beta41','beta51','beta12','beta22',
+                             'beta32','beta42','D11','D22','D12',rep('lambda',7),'sigma','alpha')
+  colnames(gradmatrixLong)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51','gbeta12','gbeta22',
+                             'gbeta32','gbeta42','gD11','gD22','gD12','grho2',rep('glambda',7),'gsigma','galpha')
+  colnames(estmatrixLong)=c('beta01','beta11','beta21','beta31','beta41','beta51','beta12','beta22',
+                            'beta32','beta42','D11','D22','D12','rho2',rep('lambda',7),'sigma','alpha')
+  colnames(gradmatrixcor)=c('gbeta01','gbeta11','gbeta21','gbeta31','gbeta41','gbeta51','gbeta12','gbeta22','gbeta32',
+                            'gbeta42','gD11','gD22','gD12','grho1','grho2',rep('glambda',7),'gsigma','galpha')
+  colnames(estmatrixcor)=c('beta01','beta11','beta21','beta31','beta41','beta51','beta12','beta22',
+                           'beta32','beta42','D11','D22','D12','rho1','rho2',rep('lambda',7),'sigma','alpha')
+  results=list(gradmatrixuncor,gradmatrixLong,gradmatrixcor,loglikmatrix,
+               estmatrixuncor,estmatrixLong,estmatrixcor,
+               colMeans(estmatrixuncor),colMeans(estmatrixLong),colMeans(estmatrixcor),
+               codematrix,itermatrix)
+  return(results)
 }
 
