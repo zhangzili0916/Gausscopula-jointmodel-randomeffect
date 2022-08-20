@@ -102,7 +102,7 @@ loglikeMvGauCD4=function(theta,data,surlmmcor,lmmcor,m,nlam)
   alpha=theta[17+nlam]
   R11=1
   if(surlmmcor=="ex") R21=rep(rho1,5)
-  if(surlmmcor=="sq") R21=c(rho1^16,rho1^8,rho1^4,rho1^2,rho1)
+  if(surlmmcor=="sqrar") R21=c(rho1^16,rho1^8,rho1^4,rho1^2,rho1)
   if(surlmmcor=="ar") R21=c(rho1^5,rho1^4,rho1^3,rho1^2,rho1)
   R12=t(R21)
   if(lmmcor=="ar") R22=AR1(5,rho2)
@@ -316,17 +316,18 @@ loglikeMvGauCD4.Long=function(theta,data,lmmcor,m,nlam)
 
 #aids data dynamic prediction
 
-#estimation from "loglikecondicopulaCD4.7ba" by assuming AR1 for correlation within longitudinal process, i.e., select "ar"
+#estimation from "loglikeMvGauCD4" by assuming sqrar between the two sub-models,
+#AR1 for correlation within longitudinal process, 7 baseline
 cd4thetacor=c(10.646855323,-0.210860423,0.002077953,-0.223121372,-4.759767688,-0.293948354,0.264092897,   
               -0.228431393,1.731049702,0.138136575,15.224239393,0.023137695,0.010801544,0.762658327,
               0.186173444,0.003721422,0.005869335,0.006419525,0.011645655,0.009431307,0.010115548,0.011264185,
               1.933341752,-0.237822764)     
-#estimation from "loglikecondicopulaCD4uncor.7ba"
+#estimation from "loglikeMvGauCD4.uncor", 7 baseline
 cd4thetauncor=c(10.610586319,-0.185950370,0.017039816,-0.249453592,-4.695488148,-0.283555195,0.300763322,
                 -0.307632614,1.744091309,0.170588412,15.934446863,0.032021842,-0.093281225,0.003633567,
                 0.005779379,0.006450096,0.012110837,0.010327712,0.011558554,0.014836405,1.738113555,
                 -0.246403545)
-#estimation from "loglikecondicopulaCD4Suruncor.7ba" by assuming AR1 for correlation within longitudinal process, i.e., select "ar"
+#estimation from "loglikeMvGauCD4.Long" by assuming AR1 for correlation within longitudinal process, 7 baseline
 cd4thetaLong=c(10.810226940,-0.183585492,0.017095720,-0.439140272,-4.777655120,-0.241655812,0.283151479,
                -0.261233741,1.763376077,0.160621725,16.193343487,0.027357713,
                -0.081765366,0.102810014,0.003480801,0.005544914,0.006200316,0.011666809,0.009971450,
@@ -589,12 +590,12 @@ cd4.parest.leaveoneout=function(theta,surlmmcor,lmmcor,m,N)
   for(i in 1:N)
   {
     fitdata=aids[aids$id!=i,]
-    estGHObuncor=nlm(f=loglikecondicopulaCD4uncor.7ba,p=theta,data=fitdata,m=m,hessian=T,iterlim=2000)
-    estGHObLong=nlm(f=loglikecondicopulaCD4Long.7ba,p=c(estGHObuncor$est[1:13],0,estGHObuncor$est[14:22]),
-                    data=fitdata,m=m,hessian=T,iterlim=2000,lmmcor=lmmcor)
-    initinfor=optim(f=loglikecondicopulaCD4cor.7ba,p=c(estGHObuncor$est[1:13],0,0,estGHObuncor$est[14:22]),
-                    data=fitdata,m=m,hessian=T,control=list(maxit=20000),surlmmcor=surlmmcor,lmmcor=lmmcor)
-    estGHObcor=nlm(f=loglikecondicopulaCD4cor.7ba,p=initinfor$par,data=fitdata,m=m,hessian=T,iterlim=2000,
+    estGHObuncor=nlm(f=loglikeMvGauCD4.uncor,p=theta,data=fitdata,m=m,hessian=T,nlam=nlam,iterlim=2000)
+    estGHObLong=nlm(f=loglikeMvGauCD4.Long,p=c(estGHObuncor$est[1:13],0,estGHObuncor$est[14:22]),
+                    data=fitdata,m=m,hessian=T,nlam=nlam,iterlim=2000,lmmcor=lmmcor)
+    initinfor=optim(f=loglikeMvGauCD4,p=c(estGHObuncor$est[1:13],0,0,estGHObuncor$est[14:22]),data=fitdata,m=m,
+                    hessian=T,nlam=nlam,control=list(maxit=20000),surlmmcor=surlmmcor,lmmcor=lmmcor)
+    estGHObcor=nlm(f=loglikeMvGauCD4,p=initinfor$par,data=fitdata,m=m,hessian=T,nlam=nlam,iterlim=2000,
                    surlmmcor=surlmmcor,lmmcor=lmmcor)
     estmatrixuncor=rbind(estmatrixuncor,estGHObuncor$estimate)
     estmatrixLong=rbind(estmatrixLong,estGHObLong$estimate)
