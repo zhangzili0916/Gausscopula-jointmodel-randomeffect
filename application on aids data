@@ -590,9 +590,11 @@ cd4.parest.leaveoneout=function(theta,surlmmcor,lmmcor,m,N)
   {
     fitdata=aids[aids$id!=i,]
     estGHObuncor=nlm(f=loglikecondicopulaCD4uncor.7ba,p=theta,data=fitdata,m=m,hessian=T,iterlim=2000)
-    estGHObLong=nlm(f=loglikecondicopulaCD4Long.7ba,p=c(theta[1:13],0,theta[14:22]),data=fitdata,m=m,hessian=T,iterlim=2000,
-                    lmmcor=lmmcor)
-    estGHObcor=nlm(f=loglikecondicopulaCD4cor.7ba,p=c(theta[1:13],0,0,theta[14:22]),data=fitdata,m=m,hessian=T,iterlim=2000,
+    estGHObLong=nlm(f=loglikecondicopulaCD4Long.7ba,p=c(estGHObuncor$est[1:13],0,estGHObuncor$est[14:22]),
+                    data=fitdata,m=m,hessian=T,iterlim=2000,lmmcor=lmmcor)
+    initinfor=optim(f=loglikecondicopulaCD4cor.7ba,p=c(estGHObuncor$est[1:13],0,0,estGHObuncor$est[14:22]),
+                    data=fitdata,m=m,hessian=T,control=list(maxit=20000),surlmmcor=surlmmcor,lmmcor=lmmcor)
+    estGHObcor=nlm(f=loglikecondicopulaCD4cor.7ba,p=initinfor$par,data=fitdata,m=m,hessian=T,iterlim=2000,
                    surlmmcor=surlmmcor,lmmcor=lmmcor)
     estmatrixuncor=rbind(estmatrixuncor,estGHObuncor$estimate)
     estmatrixLong=rbind(estmatrixLong,estGHObLong$estimate)
@@ -600,7 +602,7 @@ cd4.parest.leaveoneout=function(theta,surlmmcor,lmmcor,m,N)
     gradmatrixuncor=rbind(gradmatrixuncor,estGHObuncor$gradient)
     gradmatrixLong=rbind(gradmatrixLong,estGHObLong$gradient)
     gradmatrixcor=rbind(gradmatrixcor,estGHObcor$gradient)
-    loglikmatrix=rbind(loglikmatrix,c(-estGHObuncor$minimum,-estGHObLong$minimum,-estGHObcor$minimum))
+    loglikmatrix=rbind(loglikmatrix,c(-estGHObuncor$minimum,-estGHObLong$minimum,-initinfor$value,-estGHObcor$minimum))
     codematrix=rbind(codematrix,c(estGHObuncor$code,estGHObLong$code,estGHObcor$code))
     itermatrix=rbind(itermatrix,c(estGHObuncor$iter,estGHObLong$iter,estGHObcor$iter))
     print(i)
@@ -623,4 +625,5 @@ cd4.parest.leaveoneout=function(theta,surlmmcor,lmmcor,m,N)
                codematrix,itermatrix)
   return(results)
 }
+
 
