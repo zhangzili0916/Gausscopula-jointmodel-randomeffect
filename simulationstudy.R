@@ -20,7 +20,7 @@ options(tikzMetricPackages = c("\\usepackage{amsmath}",
                                "\\usetikzlibrary{calc}"))
 
 
-GaussianHermite <- function(r)                    #function for generating Gaussian hermite nodes and their corresponding weights
+GaussianHermite=function(r)                    #function for generating Gaussian hermite nodes and their corresponding weights
 {
   esp=3.0e-14
   pim4=1/sqrt(sqrt(pi)) 	
