@@ -63,7 +63,9 @@ car1=function(timepoint, rho) {                #continuous AR1 function
 
 
 data(aids)
-data(aids,package="JM")
+
+aids$patient=aids$id   #AIDS dataset JM and joineR have different column names for same variables. Incorporate them into one date set
+aids$Time=aids$time
 
 #Fit longitudinal alone first and it seems AR1 structrue provides best fitting
 lme(CD4~obstime+drug+drug:obstime+gender+prevOI+AZT,random=~obstime|patient,data=aids,method="ML")
@@ -120,7 +122,7 @@ loglikeMvGauCD4=function(theta,data,surlmmcor,lmmcor,m,nlam)
   if(is.positive.definite(R)>0&sigma>0&sum(lambda>rep(0,nlam))==nlam&is.positive.definite(D)>0)
   {
     ll=0
-    for(i in 1:n)
+    for(i in unique(data$id))
     {
       Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
                    data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
@@ -195,7 +197,7 @@ loglikeMvGauCD4.uncor=function(theta,data,m,nlam)      #nlam is the number of pi
   if(sigma>0&sum(lambda>rep(0,nlam))==nlam&is.positive.definite(D)>0)
   {
     ll=0
-    for(i in 1:n)
+    for(i in unique(data$id))
     {
       Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
                    data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
@@ -267,7 +269,7 @@ loglikeMvGauCD4.Long=function(theta,data,lmmcor,m,nlam)
   if(is.positive.definite(R22)>0&sigma>0&sum(lambda>rep(0,nlam))==nlam&is.positive.definite(D)>0)
   {
     ll=0
-    for(i in 1:n)
+    for(i in unique(data$id))
     {
       Xi1=matrix(c(rep(1,sum(data$patient==i)),data$obstime[data$patient==i],
                    data$obstime[data$patient==i]*(as.numeric(data$drug[data$patient==i])-1),
